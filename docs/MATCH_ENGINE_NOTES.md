@@ -5,9 +5,10 @@ designed and built so far. It's a memory aid for you, not a technical
 spec — for exact detail meant for coding, see the `CLAUDE.md` files listed
 at the bottom of this document.
 
-**Where things stand**: the match simulation engine (backend only — no
-API, no frontend, no database) is functional and tested. You can simulate
-a full match between two teams with custom stats, live in the terminal.
+**Where things stand**: the match simulation engine, a live API/WebSocket
+layer, and SQLite persistence are all functional and tested (backend only
+— no frontend yet). You can simulate a full match between two teams with
+custom stats in the terminal, or create/watch one live over the real API.
 
 ---
 
@@ -545,4 +546,5 @@ detail meant for coding (full formulas, weight tables, event taxonomy):
 - [`backend/app/commentary/CLAUDE.md`](../backend/app/commentary/CLAUDE.md) — the commentary layer
 - [`backend/app/engine/rating/CLAUDE.md`](../backend/app/engine/rating/CLAUDE.md) — the stats → ratings layer
 - [`backend/app/delivery/CLAUDE.md`](../backend/app/delivery/CLAUDE.md) — the API/WebSocket layer
+- [`backend/app/persistence/CLAUDE.md`](../backend/app/persistence/CLAUDE.md) — the persistence layer
 - [`README.md`](../README.md) — full roadmap (10 phases)
