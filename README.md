@@ -16,7 +16,7 @@ cards, injuries, and the tension of every attack unfolding phase by phase.
 
 - [Vision](#vision)
 - [What makes a result](#what-makes-a-result)
-- [Project status](#project-status)
+- [Roadmap](#roadmap)
 - [Architecture](#architecture)
 - [Repository structure](#repository-structure)
 - [Getting started](#getting-started)
@@ -47,22 +47,132 @@ balance so that none of them makes the others irrelevant:
 | **Tactics** | Mentality, tempo, pressing, width, defensive line, and marking scheme *structurally* change how a match unfolds, not just its odds. Two teams with identical players but opposed tactics should play visibly different matches. |
 | **Variance** | No duel is ever certain. Probabilities are always clamped away from 0% and 100%, and the dice still has to be rolled — upsets are a feature, not a bug. |
 
-## Project status
+## Roadmap
 
-Currently in the **design phase**, focused entirely on the backend match
-engine. No gameplay code has been written yet — the priority right now is
-getting the simulation architecture right before writing implementation.
+The path to the full game runs through the match engine first — everything
+else (squads, tactics UI, transfers, seasons) is built on top of it, so it
+has to be right before anything else is worth building. Phases are meant to
+be built roughly in order; later phases will get more detail as earlier ones
+land.
 
-- [x] Project vision and scope defined
-- [x] Match engine architecture designed (possession-chain simulation,
-      tactical matchup model, contest resolution formula)
-- [x] API/streaming architecture designed (WebSocket live match delivery)
-- [ ] Backend scaffolding (project skeleton, domain models)
-- [ ] Match engine implementation
-- [ ] API + live match streaming implementation
-- [ ] Frontend (stack not yet chosen)
-- [ ] Persistence layer
-- [ ] Season/league/transfer systems
+**🚧 Currently in: Phase 0 (design), moving into Phase 1.**
+
+<details open>
+<summary><b>Phase 0 — Foundations (design)</b></summary>
+
+- [x] Vision & scope defined
+- [x] Match engine architecture (possession chains, tactical matchup model,
+      contest resolution formula)
+- [x] Stats → rating algorithm design (`PhaseRatingCalculator`,
+      `ProtagonistSelector`, data-driven weight tables)
+- [x] API/streaming architecture (WebSocket live match delivery, deterministic
+      engine decoupled from real-time pacing)
+- [ ] Phase state machine as an extensible strategy/registry pattern (so new
+      phases — extra time, penalty shootouts — don't require touching a
+      central branch)
+- [ ] `MatchEvent` schema versioning strategy (so new event types don't break
+      already-deployed clients later)
+
+</details>
+
+<details open>
+<summary><b>Phase 1 — Match Engine MVP</b></summary>
+
+The first real milestone: simulate a full match and print its commentary
+feed from a script, no API or UI involved yet.
+
+- [ ] Backend scaffolding (`pyproject.toml`, folder skeleton, CI basics)
+- [ ] Domain models (`Player`, `Team`, `Formation`, `Tactic`)
+- [ ] Rating layer (`PhaseRatingCalculator`, `ProtagonistSelector`, weight
+      tables)
+- [ ] Possession-chain engine (phase transitions, contest resolution,
+      fatigue, tactical matchup)
+- [ ] Fouls, cards, injuries, substitutions
+- [ ] Commentary generation (template banks)
+- [ ] Statistical/balance test suite
+- [ ] **Milestone:** simulate a match from the command line and read the
+      full commentary feed end to end
+
+</details>
+
+<details>
+<summary><b>Phase 2 — Live Delivery</b></summary>
+
+- [ ] FastAPI REST + WebSocket layer (`api/`/`services/` split)
+- [ ] `Pacer` for live-paced match streaming
+- [ ] Multi-viewer session handling (one simulation, many watchers)
+- [ ] **Milestone:** watch a full match live over WebSocket from a simple
+      client
+
+</details>
+
+<details>
+<summary><b>Phase 3 — Persistence</b></summary>
+
+- [ ] Choose a database (likely PostgreSQL)
+- [ ] Repository interfaces + implementations for players, teams, match
+      results
+- [ ] Fictional player/team generation tooling (no real-world player data —
+      this is an original, license-clean simulator)
+
+</details>
+
+<details>
+<summary><b>Phase 4 — Frontend MVP</b></summary>
+
+- [ ] Pick the frontend stack
+- [ ] Live match viewer: score, clock, event ticker, commentary feed
+- [ ] Basic team/squad browsing UI
+
+</details>
+
+<details>
+<summary><b>Phase 5 — Club & Tactics Management</b></summary>
+
+- [ ] Squad management UI (players, attributes, fitness)
+- [ ] Formation & tactics editor, wired to actually change simulated matches
+- [ ] Save/load tactics per team
+
+</details>
+
+<details>
+<summary><b>Phase 6 — Seasons & Competitions</b></summary>
+
+- [ ] Fixture/schedule generation
+- [ ] League table & standings
+- [ ] Simulate a full matchday/season, not just a single match
+- [ ] Cup/knockout competitions
+
+</details>
+
+<details>
+<summary><b>Phase 7 — Club Economy</b></summary>
+
+- [ ] Transfer market
+- [ ] Contracts & wages
+- [ ] Club finances/budget
+
+</details>
+
+<details>
+<summary><b>Phase 8 — Progression & Depth</b></summary>
+
+- [ ] Player development/aging across seasons
+- [ ] Morale system
+- [ ] Persistent injuries across matches
+- [ ] Training
+
+</details>
+
+<details>
+<summary><b>Phase 9 — Community & Polish</b></summary>
+
+- [ ] CI/CD and test coverage gates
+- [ ] Contributing guide, issue templates
+- [ ] Docker/dev environment setup
+- [ ] Deployment guide
+
+</details>
 
 ## Architecture
 

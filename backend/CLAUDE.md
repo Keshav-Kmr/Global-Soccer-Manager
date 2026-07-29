@@ -20,6 +20,7 @@ backend/
   app/
     domain/            - pure data models: Player, Team, Formation, Tactic
     engine/            - the match simulation engine itself (see its CLAUDE.md)
+      rating/          - stats -> phase ratings (see its own CLAUDE.md)
     commentary/        - MatchEvent -> narrative text
     delivery/
       api/             - FastAPI routers ONLY: parse request, call a service,

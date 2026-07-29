@@ -19,9 +19,12 @@ Per the class-based convention in `backend/CLAUDE.md`, `simulate_match` is a
 thin entry point delegating to classes with single responsibilities, e.g.
 `MatchSimulator` (owns the overall loop and match state), `PossessionChainEngine`
 (runs one chain's phase transitions), `ProbabilityModel` (the contest formula,
-§4), `TacticalMatchup` (§2), and `FatigueModel` (§3). Each gets its own file
-under `engine/` and a docstring explaining its role; don't collapse them into
-one large module.
+§4), `TacticalMatchup` (§2), `FatigueModel` (§3), and `PhaseRatingCalculator` /
+`ProtagonistSelector` (`engine/rating/CLAUDE.md` — how player attributes turn
+into the ratings the contest formula compares). Each gets its own file under
+`engine/`, grouped into subfolders when a concern is cohesive enough to
+deserve one (as `rating/` does), with a docstring explaining its role. Don't
+collapse them into one large module.
 
 ## 1. Domain model
 
@@ -118,14 +121,21 @@ Every duel in the engine — progression, chance creation, tackles, shots —
 resolves through the same primitive:
 
 ```
-effective_attacker = base_attribute_attacker * tactic_mod_attacker * fatigue_attacker
-effective_defender = base_attribute_defender * tactic_mod_defender * fatigue_defender
+effective_attacker = phase_rating_attacker * tactic_mod_attacker * fatigue_attacker
+effective_defender = phase_rating_defender * tactic_mod_defender * fatigue_defender
 
 p = 1 / (1 + e^(-(effective_attacker - effective_defender) / SPREAD))
 p = clamp(p, P_MIN, P_MAX)   # e.g. P_MIN=0.10, P_MAX=0.90
 
 outcome = rng.random() < p
 ```
+
+`phase_rating_*` is **not** a single player's raw attribute — it's the
+output of `PhaseRatingCalculator`/`ProtagonistSelector`, which blend a
+team-wide aggregate with the selected protagonist's individual attributes.
+See `engine/rating/CLAUDE.md` for exactly how that number is built and why
+it's structured as data-driven weight tables rather than branching logic —
+that's what keeps rebalancing and adding attributes/phases later cheap.
 
 - `SPREAD` controls how much a rating gap matters and can be tuned per phase
   type (e.g. shots might be more variance-prone than build-up progression).
