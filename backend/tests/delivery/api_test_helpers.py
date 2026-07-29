@@ -5,10 +5,8 @@ and an app wired with a near-instant Pacer so tests don't wait out a real
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.delivery.api.matches import router as matches_router
-from app.delivery.services.match_service import MatchService
 from app.delivery.services.pacer import Pacer
-from app.persistence.in_memory_repository import InMemoryMatchRepository
+from app.main import create_app
 
 _FORMATION = ["GK", "CB", "CB", "FB", "FB", "DM", "CM", "CM", "W", "ST", "W"]
 
@@ -41,14 +39,14 @@ def make_match_request(seed: int = 42) -> dict:
 
 
 def build_test_app() -> FastAPI:
-    """Same wiring as app.main.create_app(), but with a near-instant Pacer
-    so a full match completes in well under a second."""
-    app = FastAPI(title="Global Soccer Manager (test)")
-    app.state.match_service = MatchService(
-        InMemoryMatchRepository(), pacer=Pacer(seconds_per_game_minute=0.001)
+    """The real app.main.create_app(), pointed at an isolated in-memory
+    SQLite database and a near-instant Pacer — so a full match completes
+    in well under a second and no test leaves anything behind on disk or
+    shares state with another test's database."""
+    return create_app(
+        database_url="sqlite+aiosqlite:///:memory:",
+        pacer=Pacer(seconds_per_game_minute=0.001),
     )
-    app.include_router(matches_router)
-    return app
 
 
 def make_test_client() -> TestClient:

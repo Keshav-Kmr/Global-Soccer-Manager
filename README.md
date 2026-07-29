@@ -55,7 +55,7 @@ has to be right before anything else is worth building. Phases are meant to
 be built roughly in order; later phases will get more detail as earlier ones
 land.
 
-**🚧 Currently in: Phase 2 (Live Delivery), with Phase 1 essentially complete.**
+**🚧 Phases 0-3 essentially complete (design, match engine, live delivery, persistence). Next up: Phase 4 (frontend) — first backend-only milestone.**
 
 <details>
 <summary><b>Phase 0 — Foundations (design)</b></summary>
@@ -121,7 +121,7 @@ the full story and current values.
 
 </details>
 
-<details open>
+<details>
 <summary><b>Phase 2 — Live Delivery</b></summary>
 
 - [x] FastAPI REST + WebSocket layer (`api/`/`services/` split)
@@ -135,19 +135,31 @@ the full story and current values.
       over WebSocket, narrated with commentary, from a simple client
       (`fastapi.testclient.TestClient` in `tests/delivery/`, or a real
       WebSocket client against `uvicorn app.main:app`)
-- [ ] A minimal manual/CLI WebSocket client script (today's proof is
-      automated tests, not a hand-run demo like `scripts/menu.py`)
+- [x] A minimal manual/CLI WebSocket client script
+      (`backend/scripts/live_client.py`) — watch a real match live through
+      the actual API/WebSocket contract, real-time paced, no second
+      terminal needed
 
 </details>
 
-<details>
+<details open>
 <summary><b>Phase 3 — Persistence</b></summary>
 
-- [ ] Choose a database (likely PostgreSQL)
-- [ ] Repository interfaces + implementations for players, teams, match
-      results
-- [ ] Fictional player/team generation tooling (no real-world player data —
-      this is an original, license-clean simulator)
+- [x] Choose a database — SQLite (async, via SQLAlchemy + `aiosqlite`);
+      zero setup, upgradeable to PostgreSQL later behind the same
+      repository interfaces without touching services/routes
+- [x] Repository interfaces + implementations for teams (with their full
+      roster) and match results — no standalone player repository yet
+      (a player only exists as part of a team; free agents/transfers are
+      Phase 7)
+- [x] Fictional player/team generation tooling (`TeamGenerator`,
+      `scripts/seed_database.py`) — no real-world player data, this is an
+      original, license-clean simulator
+- [x] **Milestone:** `POST /teams` to persist a roster, `GET /teams/{id}`
+      to fetch it back, and `GET /matches/{id}/result` for a finished
+      match's score + full event log — all still there after a restart
+- [ ] Migrations (Alembic) — schema still moves too fast to be worth it
+      yet; tables are just recreated on startup for now
 
 </details>
 
@@ -219,8 +231,9 @@ At a glance:
  delivery/api      →  thin FastAPI routes (POST /matches, WS /stream)
         │
         ▼
- delivery/services →  MatchService: session lifecycle, Pacer, in-memory
-        │                event log (persistence/, behind an interface)
+ delivery/services →  MatchService/TeamService: session lifecycle, Pacer,
+        │                persistence/ (SQLite, behind an interface —
+        │                live event log in-memory, results/teams durable)
         ▼
  engine + commentary →  pure, deterministic match simulation, narrated
         │
@@ -245,13 +258,17 @@ backend/
     engine/       - the match simulation engine
     commentary/   - turns match events into narrative text
     delivery/
-      api/        - FastAPI routes (matches.py: create + WebSocket stream)
-      services/   - orchestration (MatchService, Pacer)
+      api/        - FastAPI routes (matches.py, teams.py)
+      services/   - orchestration (MatchService, TeamService, Pacer)
       schemas.py  - Pydantic wire models + domain conversion
-    persistence/  - MatchRepository interface + in-memory implementation
+    persistence/  - SQLite (async): MatchRepository (live, in-memory),
+                    TeamRepository + MatchResultRepository (durable, SQL)
+    generation/   - fictional player/team content (no real-world data)
     main.py       - FastAPI app factory (`uvicorn app.main:app`)
   tests/
     delivery/     - FastAPI TestClient tests (REST + WebSocket)
+    persistence/  - repository round-trip tests (isolated in-memory SQLite)
+    generation/   - generator determinism/distribution tests
 frontend/         - not started yet
 ```
 
@@ -262,10 +279,11 @@ cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-pytest                             # all tests: engine, commentary, delivery
+pytest                             # all tests: engine, commentary, delivery, persistence
 python scripts/simulate_demo.py    # simulate one match, print its event feed
 python scripts/menu.py             # interactive scenario picker, incl. live
                                     # mid-match tactic changes/substitutions
+python scripts/seed_database.py    # populate the DB with fictional teams
 
 uvicorn app.main:app --reload      # run the API — POST /matches, then
                                     # connect a WebSocket client to

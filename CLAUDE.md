@@ -74,8 +74,6 @@ specific to that area; this root file holds what applies project-wide.
 ## Explicitly out of scope for now
 
 - Visual pitch rendering / 2D or 3D animation.
-- Persistence layer (database) — will be decided once the engine MVP is
-  stable.
 - Frontend framework choice — deferred.
 - Leagues, seasons, transfers, finances, youth academy, scouting — all future
   game-layer features built on top of the match engine, not part of it.

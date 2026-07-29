@@ -26,25 +26,28 @@ backend/
       api/             - FastAPI routers ONLY: parse request, call a service,
                          return/stream the response. No logic lives here.
       services/        - orchestration: MatchService owns match session
-                         lifecycle, invokes the engine, runs the Pacer.
-                         This is where routes' actual logic lives.
+                         lifecycle, invokes the engine, runs the Pacer;
+                         TeamService is the thin equivalent for team
+                         persistence routes.
       schemas.py        - Pydantic request/response + WebSocket wire models
-    persistence/
-      repository.py     - repository interfaces (e.g. MatchRepository ABC)
-      in_memory_*.py    - concrete implementations (in-memory now, DB later).
-                         Services depend on the interface, never on a
-                         concrete DB client directly. Split into a
-                         `repositories/` subfolder if/when there's more than
-                         one repository concept — a single ABC + one impl
-                         doesn't need one yet.
+    persistence/         - see its own CLAUDE.md
+      database.py        - async SQLAlchemy engine/session factory (SQLite)
+      models.py           - ORM models (TeamModel, PlayerModel, MatchResultModel)
+      repository.py + in_memory_repository.py       - MatchRepository (live session state)
+      team_repository.py + sql_team_repository.py   - TeamRepository (roster persistence)
+      match_result_repository.py + sql_match_result_repository.py - finished-match records
+    generation/          - fictional player/team content (no real-world data)
     main.py             - FastAPI app factory; `uvicorn app.main:app`
   tests/
     engine/            - unit + statistical tests for the simulation
     delivery/          - FastAPI TestClient tests (REST + WebSocket)
+    persistence/       - repository round-trip tests (isolated in-memory SQLite)
+    generation/        - generator determinism/distribution tests
     ...
-  .venv/               - required for delivery/ (FastAPI, uvicorn, httpx
-                         aren't available system-wide); pytest alone
-                         works without it for everything else
+  .venv/               - required for delivery/persistence (FastAPI, uvicorn,
+                         httpx, sqlalchemy, aiosqlite aren't available
+                         system-wide); pytest alone works without it for
+                         everything else
   pyproject.toml
 ```
 

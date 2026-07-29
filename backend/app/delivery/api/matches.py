@@ -6,9 +6,15 @@ delivery/services/match_service.py, not here.
 
 import asyncio
 
-from fastapi import APIRouter, Depends, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
 
-from app.delivery.schemas import CreateMatchRequest, CreateMatchResponse, context_from_request, team_from_schema
+from app.delivery.schemas import (
+    CreateMatchRequest,
+    CreateMatchResponse,
+    MatchResultSchema,
+    context_from_request,
+    team_from_schema,
+)
 from app.delivery.services.match_service import MatchService
 
 router = APIRouter()
@@ -64,3 +70,16 @@ async def stream_match(
             await asyncio.sleep(_POLL_INTERVAL_SECONDS)
     except WebSocketDisconnect:
         pass
+
+
+@router.get("/matches/{match_id}/result", response_model=MatchResultSchema)
+async def get_match_result(
+    match_id: str, service: MatchService = Depends(get_match_service)
+) -> MatchResultSchema:
+    """The durable record — works even after a server restart, unlike the
+    live in-memory session `/stream` reads from. 404 both when the match
+    never existed and when it's still in progress (not finished yet)."""
+    result = await service.get_result(match_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="no finished result for this match id")
+    return MatchResultSchema.model_validate(result, from_attributes=True)

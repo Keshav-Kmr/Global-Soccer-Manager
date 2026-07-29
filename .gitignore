@@ -8,6 +8,10 @@ __pycache__/
 .venv/
 venv/
 
+# Local SQLite databases
+*.db
+*.db-journal
+
 # Editors
 .vscode/
 .idea/

@@ -81,20 +81,31 @@ Global-Soccer-Manager/
 │   │   ├── delivery/
 │   │   │   ├── CLAUDE.md           # reference doc for the API/WebSocket layer
 │   │   │   ├── schemas.py          # Pydantic wire models + domain conversion
-│   │   │   ├── api/matches.py      # FastAPI routes: POST /matches, WS /stream
+│   │   │   ├── api/
+│   │   │   │   ├── matches.py      # POST /matches, WS /stream, GET /result
+│   │   │   │   └── teams.py        # POST/GET /teams
 │   │   │   └── services/
 │   │   │       ├── match_service.py# MatchService — session lifecycle
+│   │   │       ├── team_service.py # TeamService — thin wrapper over TeamRepository
 │   │   │       └── pacer.py        # Pacer — the only asyncio.sleep in the codebase
-│   │   ├── persistence/
-│   │   │   ├── repository.py       # MatchRepository (interface)
-│   │   │   └── in_memory_repository.py
+│   │   ├── persistence/            # SQLite (async) — see its own CLAUDE.md
+│   │   │   ├── database.py         # engine/session factory, injectable URL
+│   │   │   ├── models.py           # TeamModel, PlayerModel, MatchResultModel
+│   │   │   ├── repository.py + in_memory_repository.py       # MatchRepository (live)
+│   │   │   ├── team_repository.py + sql_team_repository.py   # TeamRepository (durable)
+│   │   │   └── match_result_repository.py + sql_match_result_repository.py
+│   │   ├── generation/
+│   │   │   └── team_generator.py   # TeamGenerator/PlayerGenerator — fictional content
 │   │   └── main.py                 # FastAPI app factory (`uvicorn app.main:app`)
 │   ├── scripts/
 │   │   ├── _teams.py               # shared make_player()/build_team()
 │   │   ├── simulate_demo.py        # one simple, non-interactive scenario
-│   │   └── menu.py                 # INTERACTIVE MENU — 6 scenarios, narrated live
-│   ├── .venv/                      # required for delivery/ (FastAPI, uvicorn, httpx)
-│   └── tests/                      # 77 tests, all green
+│   │   ├── menu.py                 # INTERACTIVE MENU — 6 scenarios, narrated live
+│   │   ├── live_client.py          # watches a match over the REAL API/WebSocket
+│   │   └── seed_database.py        # populates the DB with fictional teams
+│   ├── .venv/                      # required for delivery/persistence (FastAPI,
+│   │                                 uvicorn, httpx, sqlalchemy, aiosqlite)
+│   └── tests/                      # 95 tests, all green
 └── frontend/CLAUDE.md              # not started
 ```
 
@@ -378,10 +389,12 @@ cd backend
 python -m venv .venv && source .venv/bin/activate   # first time only
 pip install -e ".[dev]"                             # first time only
 
-pytest -q                         # the 77 tests (unit + statistical + API)
+pytest -q                         # the 95 tests (unit + statistical + API)
 python scripts/simulate_demo.py   # one fixed scenario, raw event feed
 python scripts/menu.py            # INTERACTIVE MENU, 6 scenarios:
-uvicorn app.main:app --reload     # run the live API (§13)
+python scripts/live_client.py     # watch a match over the REAL API/WebSocket
+                                   # (real-time paced, ~30s — see §13)
+uvicorn app.main:app --reload     # run the live API yourself (§13)
 ```
 
 (Everything except `tests/delivery/` also runs fine with plain system
@@ -411,12 +424,9 @@ adjust `overall`, the `Tactic(...)`, or replace a specific player via
   already have it
 - Offside, corners/free-kicks as their own sequences (for now a foul just
   restarts a normal chain)
-- A minimal manual/CLI WebSocket client script for `§13`'s API — today the
-  only proof it works is automated `TestClient` tests, not a hand-run demo
-  the way `scripts/menu.py` is for the engine
-- Real persistence (Phase 3): swap `InMemoryMatchRepository` for a database-
-  backed one behind the same `MatchRepository` interface — nothing in
-  `MatchService` or the routes should need to change
+- A standalone player repository / free-agent pool, once transfers exist
+  (Phase 7) — right now a player only exists as part of a team
+- Migrations (Alembic) — schema still moves too fast to be worth it
 - After that: frontend (Phase 4)... see the full roadmap in `README.md`
 
 ---
@@ -476,7 +486,55 @@ like pytest was — `backend/.venv` now exists specifically for this
 
 ---
 
-## 14. Where to find precise technical detail
+## 14. Persistence (Phase 3)
+
+SQLite, async, via SQLAlchemy + `aiosqlite` — zero setup (a file, no
+server to run), and upgradeable to PostgreSQL later without touching
+services or routes, since everything goes through repository interfaces
+(`app/persistence/`, one `CLAUDE.md` of its own now).
+
+**Two repositories with deliberately different lifetimes** — don't merge them:
+
+- **`MatchRepository`** (already existed, §13) — the *live* event log for
+  a match currently streaming. Stays in-memory on purpose: nobody needs a
+  currently-running match's blow-by-blow to survive a restart, and writing
+  every event to disk in real time would be wasted I/O.
+- **`MatchResultRepository`** (new) — the *durable* record of a **finished**
+  match: final score, both teams' ids/names, seed, and the full
+  commentary-annotated event log, written once when `MatchService` sees
+  `match.finished`. This is what makes `GET /matches/{id}/result` survive a
+  server restart, unlike `/stream`.
+
+**`TeamRepository`** persists a `Team`'s full roster (`starting_xi` +
+`bench`) and `Tactic`. No standalone player repository yet — a player only
+exists as part of a team (no free agents/transfers until Phase 7), so
+`PlayerModel` is just a child table of `TeamModel`. New routes:
+`POST /teams`, `GET /teams/{id}`, `GET /teams`.
+
+**Fictional content generation** (`app/generation/team_generator.py`):
+this project uses no real-world player data, so `TeamGenerator`/
+`PlayerGenerator` procedurally invent players — name pools plus attributes
+rolled from a Gaussian centered on a requested "quality" tier, clamped to
+1-99. Deterministic given a seeded `random.Random`, including for **ids**:
+`uuid.uuid4()` would have silently broken that determinism (it reads
+`os.urandom`, not the seeded generator), so ids are derived from the same
+RNG instead (`rng.getrandbits(64)`, hex-formatted). `scripts/seed_database.py`
+populates the database with a handful of generated teams.
+
+**Testability**: `create_engine_and_session_factory(database_url)` takes
+the URL as an argument rather than reading a hardcoded global — tests
+always pass `sqlite+aiosqlite:///:memory:`, so nothing leaks between test
+runs (the same fix, for the same reason, as `Team`'s original-composition
+snapshot in §5/§10). In-memory SQLite specifically needs `StaticPool` to
+keep one connection (and therefore one database) alive across the multiple
+sessions a single test can open — otherwise every new session would see a
+brand new, empty `:memory:` database. No `pytest-asyncio` dependency
+either: repository tests just wrap each async call in a plain
+`asyncio.run(...)` from an ordinary sync test function.
+
+---
+
+## 15. Where to find precise technical detail
 
 This file is a summary to help you remember the big picture. For exact
 detail meant for coding (full formulas, weight tables, event taxonomy):

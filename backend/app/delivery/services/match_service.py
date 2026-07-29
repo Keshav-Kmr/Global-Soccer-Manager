@@ -21,14 +21,25 @@ from app.delivery.schemas import MatchEventMessage
 from app.delivery.services.pacer import Pacer
 from app.engine.events import MatchEvent
 from app.engine.match import MINUTES_PER_CHAIN, Match
+from app.engine.summary import final_score
+from app.persistence.match_result_repository import MatchResult, MatchResultRepository
 from app.persistence.repository import MatchRepository
 
 
 class MatchService:
-    def __init__(self, repository: MatchRepository, pacer: Pacer | None = None) -> None:
+    def __init__(
+        self,
+        repository: MatchRepository,
+        pacer: Pacer | None = None,
+        match_result_repository: MatchResultRepository | None = None,
+    ) -> None:
         self._repository = repository
         self._pacer = pacer or Pacer()
         self._commentary = CommentaryGenerator()
+        # Optional: the live in-memory session (above) is all that's
+        # needed for streaming; this is only for the match to still be
+        # look-up-able after the process restarts (persistence/CLAUDE.md).
+        self._match_result_repository = match_result_repository
 
     async def start_match(
         self, team_a: Team, team_b: Team, seed: int | None, context: MatchContext
@@ -42,13 +53,15 @@ class MatchService:
         commentary_rng = random.Random(match.seed)
 
         self._repository.create(match_id)
-        asyncio.create_task(self._run(match_id, match, roster, commentary_rng))
+        asyncio.create_task(self._run(match_id, match, team_a, team_b, roster, commentary_rng))
         return match_id
 
     async def _run(
         self,
         match_id: str,
         match: Match,
+        team_a: Team,
+        team_b: Team,
         roster: dict[str, Player],
         commentary_rng: random.Random,
     ) -> None:
@@ -58,14 +71,33 @@ class MatchService:
         # inside play_next_chain() itself, separately from the ChainResult
         # — relying on the ChainResult alone would silently drop both.
         sent = 0
+        wire_events: list[dict] = []
         while not match.finished:
             match.play_next_chain()
             for event in match.events[sent:]:
                 message = self._to_message(event, roster, commentary_rng)
-                self._repository.append_event(match_id, message.model_dump())
+                wire_event = message.model_dump()
+                wire_events.append(wire_event)
+                self._repository.append_event(match_id, wire_event)
             sent = len(match.events)
             await self._pacer.wait(MINUTES_PER_CHAIN)
         self._repository.mark_finished(match_id)
+
+        if self._match_result_repository is not None:
+            score = final_score(match.events, team_a.id, team_b.id)
+            await self._match_result_repository.save(
+                MatchResult(
+                    match_id=match_id,
+                    team_a_id=team_a.id,
+                    team_a_name=team_a.name,
+                    team_b_id=team_b.id,
+                    team_b_name=team_b.name,
+                    score_a=score[team_a.id],
+                    score_b=score[team_b.id],
+                    seed=match.seed,
+                    events=wire_events,
+                )
+            )
 
     def _to_message(
         self, event: MatchEvent, roster: dict[str, Player], commentary_rng: random.Random
@@ -91,3 +123,11 @@ class MatchService:
 
     def is_finished(self, match_id: str) -> bool:
         return self._repository.is_finished(match_id)
+
+    async def get_result(self, match_id: str) -> MatchResult | None:
+        """The durable record, if this service was configured with a
+        MatchResultRepository and the match has finished — survives a
+        process restart, unlike the live in-memory session above."""
+        if self._match_result_repository is None:
+            return None
+        return await self._match_result_repository.get(match_id)

@@ -93,3 +93,30 @@ def test_a_late_viewer_gets_the_full_backlog_then_the_rest_live():
         with client.websocket_connect(f"/matches/{match_id}/stream") as ws:
             first_message = ws.receive_json()
             assert first_message["type"] == "kickoff"
+
+
+def test_match_result_is_available_only_after_the_match_finishes():
+    """The durable record (persistence/match_result_repository.py) — not
+    to be confused with the live in-memory session /stream reads from."""
+    with make_test_client() as client:
+        match_id = client.post("/matches", json=make_match_request()).json()["match_id"]
+
+        before = client.get(f"/matches/{match_id}/result")
+        assert before.status_code == 404
+
+        with client.websocket_connect(f"/matches/{match_id}/stream") as ws:
+            while ws.receive_json()["type"] != "full_time":
+                pass
+
+        after = client.get(f"/matches/{match_id}/result")
+        assert after.status_code == 200
+        body = after.json()
+        assert body["match_id"] == match_id
+        assert isinstance(body["score_a"], int) and isinstance(body["score_b"], int)
+        assert len(body["events"]) > 0
+
+
+def test_unknown_match_result_is_404():
+    with make_test_client() as client:
+        response = client.get("/matches/does-not-exist/result")
+        assert response.status_code == 404

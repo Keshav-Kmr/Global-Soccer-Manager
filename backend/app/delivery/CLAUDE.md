@@ -135,6 +135,9 @@ before there's a concrete need for it.
 - Authentication / authorization.
 - Reconnection tokens / resuming a dropped connection beyond simple
   reconnect-and-get-backlog.
-- Persisting finished matches to a database (the in-memory event log is
-  ephemeral for now — see root `CLAUDE.md` on persistence being deferred).
 - Horizontal scaling / multi-process match session sharing.
+
+Finished matches *are* now persisted (`GET /matches/{id}/result`, backed by
+`MatchResultRepository` — see `persistence/CLAUDE.md`) — only the *live*,
+in-progress event log (`/stream` reads from) stays in-memory/ephemeral,
+deliberately, not as a stopgap.

@@ -86,6 +86,20 @@ class MatchEventMessage(BaseModel):
     commentary: str
 
 
+class MatchResultSchema(BaseModel):
+    """The durable, post-match record — see persistence/match_result_repository.py."""
+
+    match_id: str
+    team_a_id: str
+    team_a_name: str
+    team_b_id: str
+    team_b_name: str
+    score_a: int
+    score_b: int
+    seed: int
+    events: list[dict]
+
+
 def _player_from_schema(schema: PlayerSchema) -> Player:
     return Player(
         id=schema.id,
