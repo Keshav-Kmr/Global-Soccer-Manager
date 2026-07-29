@@ -81,17 +81,27 @@ land.
 The first real milestone: simulate a full match and print its commentary
 feed from a script, no API or UI involved yet.
 
-- [ ] Backend scaffolding (`pyproject.toml`, folder skeleton, CI basics)
-- [ ] Domain models (`Player`, `Team`, `Formation`, `Tactic`)
-- [ ] Rating layer (`PhaseRatingCalculator`, `ProtagonistSelector`, weight
+- [x] Backend scaffolding (`pyproject.toml`, folder skeleton)
+- [x] Domain models (`Player`, `Team`, `Tactic`)
+- [x] Rating layer (`PhaseRatingCalculator`, `ProtagonistSelector`, weight
       tables)
-- [ ] Possession-chain engine (phase transitions, contest resolution,
+- [x] Possession-chain engine (phase transitions, contest resolution,
       fatigue, tactical matchup)
 - [ ] Fouls, cards, injuries, substitutions
-- [ ] Commentary generation (template banks)
-- [ ] Statistical/balance test suite
-- [ ] **Milestone:** simulate a match from the command line and read the
-      full commentary feed end to end
+- [ ] Commentary generation (template banks) — engine currently emits raw
+      structured events, not narrated text
+- [x] Statistical/balance test suite
+- [x] **Milestone:** simulate a match from the command line and read the
+      raw event feed end to end (`python backend/scripts/simulate_demo.py`)
+- [ ] CI basics
+
+Calibration note: a possession chain requires winning several *sequential*
+contests, so per-duel probabilities compound multiplicatively — an early
+pass at the contest formula's constants let a 15-point attribute gap alone
+produce a 93% win rate for the favorite with the underdog winning under 1%
+of the time. Constants were re-tuned empirically against the statistical
+tests; see the calibration note in `backend/app/engine/probability.py` for
+the full story and current values.
 
 </details>
 
@@ -218,9 +228,20 @@ frontend/         - not started yet
 
 ## Getting started
 
-There's nothing runnable yet — the project is still in the architecture and
-design-documentation stage. Once the backend scaffolding lands, this section
-will cover installing dependencies and running the API locally.
+The match engine has a first runnable slice — no API/frontend yet, just the
+simulation itself.
+
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+
+pytest                        # unit + statistical balance tests
+python scripts/simulate_demo.py   # simulate one match, print its event feed
+```
+
+Edit `scripts/simulate_demo.py` to try your own team stats/tactics and see
+how a match plays out.
 
 ## Documentation
 
