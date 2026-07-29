@@ -33,36 +33,35 @@ Each `MatchEvent` type has a bank of multiple template variants (`templates.py`)
 one chosen via the match's RNG per event to avoid repetitive-sounding
 matches. v1 selects uniformly (`rng.choice`) — genuinely weighting specific
 variants higher is a plausible refinement once we have opinions about which
-lines should show up more, not something to guess at now:
-
-```
-SHOT templates for a "dribble-created" chance:
-  "{player} dances past a challenge and gets a shot away!"
-  "{player} jinks inside and lets fly!"
-
-SHOT templates for a "through-ball-created" chance:
-  "{player} is played in behind... and shoots!"
-  "{player} races onto the through ball!"
-```
+lines should show up more, not something to guess at now.
 
 ## Attribute-flavored phrasing
 
-`POSSESSION_PROGRESS` is the one event type with its own dedicated template
-table (`PROGRESSION_TEMPLATES_BY_FLAVOR`) instead of a flat bank. Implemented
-in `CommentaryGenerator._dominant_flavor()`: compare the protagonist's Pace,
-Dribbling, and Vision; whichever is highest picks the flavor bank —
-"explodes past"/"races down the {phase}" for pace, "dances past"/"jinks
-past" for dribbling, "picks out"/"threads it through" for vision — but only
-if that attribute clears `FLAVOR_THRESHOLD` (70/99). Below that, phrasing
-falls back to a generic bank rather than reading as flashy for an
-unremarkable player.
+Three event types have their own dedicated flavor table instead of a flat
+bank, each keyed by which candidate attribute is highest for the relevant
+player — implemented generically via `_FLAVORED_EVENT_TYPES` and
+`CommentaryGenerator._dominant_flavor()` in `generator.py`, not as
+per-event-type branches:
 
-This is what makes the same event type feel different depending on which
-player and which attributes actually produced it — a direct payoff of the
-engine exposing *why* a phase succeeded, not just *that* it did. Other event
-types (SHOT, GOAL, FOUL...) currently use one flat bank each — extending
-this same flavor-by-attribute approach to them is a natural next step, not
-done yet.
+- `POSSESSION_PROGRESS` (`PROGRESSION_TEMPLATES_BY_FLAVOR`): the
+  protagonist's Pace vs Dribbling vs Vision — "explodes past"/"races down
+  the {phase}" for pace, "dances past"/"jinks past" for dribbling, "picks
+  out"/"threads it through" for vision.
+- `SHOT` (`SHOT_TEMPLATES_BY_FLAVOR`): the shooter's Shooting vs Composure
+  — "strikes it with real power" for shooting, "calmly picks a spot" for
+  composure.
+- `FOUL` (`FOUL_TEMPLATES_BY_FLAVOR`): the tackler's Aggression alone (a
+  single-candidate case — either it clears the threshold and reads
+  "reckless"/"crunching," or it doesn't and phrasing stays neutral).
+
+In every case, the winning attribute only earns its flavor if it clears
+`FLAVOR_THRESHOLD` (70/99); below that, phrasing falls back to a generic
+bank rather than reading as flashy (or reckless) for an unremarkable
+player. This is what makes the same event type feel different depending on
+which player and which attributes actually produced it — a direct payoff
+of the engine exposing *why* a phase succeeded, not just *that* it did.
+Remaining flat-bank event types (GOAL, CARD, INJURY...) are natural
+candidates to extend this same way later, not done yet.
 
 ## Suspense pacing
 

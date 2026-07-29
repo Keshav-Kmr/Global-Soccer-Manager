@@ -83,7 +83,7 @@ Global-Soccer-Manager/
 │   │   ├── _teams.py               # shared make_player()/build_team()
 │   │   ├── simulate_demo.py        # one simple, non-interactive scenario
 │   │   └── menu.py                 # INTERACTIVE MENU — 6 scenarios, narrated live
-│   └── tests/                      # 61 tests, all green
+│   └── tests/                      # 66 tests, all green
 └── frontend/CLAUDE.md              # not started
 ```
 
@@ -272,11 +272,14 @@ formats text, commentary never decides an outcome.
 
 - **`templates.py`**: banks of phrases per event type (data, not code). A
   phrase is picked at random from the bank each time to avoid repetition.
-- **`POSSESSION_PROGRESS` gets special treatment**: the bank picked
-  depends on the protagonist's dominant attribute (pace/dribbling/vision),
-  and only if that attribute clears 70/99 — otherwise, generic phrasing. A
-  fast player "explodes" or "bursts through," a dribbler "beats the
-  defender," nobody talks about speed for an average player.
+- **Three event types get attribute-flavored treatment** instead of one
+  flat bank: `POSSESSION_PROGRESS` (protagonist's pace/dribbling/vision),
+  `SHOT` (shooter's shooting power vs composure), `FOUL` (tackler's
+  aggression — "reckless"/"crunching" phrasing). In every case only if the
+  winning attribute clears 70/99 — otherwise, generic phrasing. A fast
+  player "explodes," a big shot "strikes it with real power," an
+  aggressive tackler "flies into a reckless challenge" — nobody gets the
+  flashy phrasing for an unremarkable stat.
 - **`CommentaryGenerator.describe(event, roster, rng)`**: `roster` is a
   dict of `player id -> Player` (`MatchEvent`s only ever carry ids, never
   full player objects — commentary is what resolves them into names).
@@ -361,7 +364,7 @@ same fix caused, and how it was corrected).
 
 ```bash
 cd backend
-python3 -m pytest -q              # the 61 tests (unit + statistical)
+python3 -m pytest -q              # the 66 tests (unit + statistical)
 python3 scripts/simulate_demo.py  # one fixed scenario, raw event feed
 python3 scripts/menu.py           # INTERACTIVE MENU, 6 scenarios:
 ```
@@ -383,8 +386,9 @@ adjust `overall`, the `Tactic(...)`, or replace a specific player via
 
 ## 12. What's left to do (short term)
 
-- Extend "attribute-flavored" commentary (§8) to other event types beyond
-  `POSSESSION_PROGRESS` (shot, foul...)
+- Extend "attribute-flavored" commentary (§8) to the remaining flat-bank
+  event types (GOAL, CARD, INJURY...) — POSSESSION_PROGRESS, SHOT, and FOUL
+  already have it
 - Offside, corners/free-kicks as their own sequences (for now a foul just
   restarts a normal chain)
 - After that: API/WebSocket (Phase 2), persistence (Phase 3), frontend

@@ -15,35 +15,58 @@ match, commentary included, reproducible from one seed.
 """
 
 import random
+from typing import Callable
 
-from app.commentary.templates import PROGRESSION_TEMPLATES_BY_FLAVOR, TEMPLATES, FLAVOR_THRESHOLD
-from app.domain.player import Player
+from app.commentary.templates import (
+    FLAVOR_THRESHOLD,
+    FOUL_TEMPLATES_BY_FLAVOR,
+    PROGRESSION_TEMPLATES_BY_FLAVOR,
+    SHOT_TEMPLATES_BY_FLAVOR,
+    TEMPLATES,
+)
+from app.domain.player import Player, PlayerAttributes
 from app.engine.events import EventType, MatchEvent
+
+
+# For each flavored event type, the flavor is decided from event.player_ids[0]
+# — the protagonist for POSSESSION_PROGRESS, the shooter for SHOT, the
+# tackler for FOUL — using the given candidate attributes.
+_FLAVORED_EVENT_TYPES = {
+    EventType.POSSESSION_PROGRESS: (PROGRESSION_TEMPLATES_BY_FLAVOR, lambda a: {
+        "pace": a.pace, "dribbling": a.dribbling, "vision": a.vision,
+    }),
+    EventType.SHOT: (SHOT_TEMPLATES_BY_FLAVOR, lambda a: {
+        "shooting": a.shooting, "composure": a.composure,
+    }),
+    EventType.FOUL: (FOUL_TEMPLATES_BY_FLAVOR, lambda a: {"reckless": a.aggression}),
+}
 
 
 class CommentaryGenerator:
     def describe(self, event: MatchEvent, roster: dict[str, Player], rng: random.Random) -> str:
-        if event.type == EventType.POSSESSION_PROGRESS:
-            templates = self._progression_templates(event, roster)
+        if event.type in _FLAVORED_EVENT_TYPES:
+            templates = self._flavored_templates(event, roster)
         else:
             templates = TEMPLATES[event.type]
 
         template = rng.choice(templates)
         return template.format(**self._context(event, roster))
 
-    def _progression_templates(self, event: MatchEvent, roster: dict[str, Player]) -> list[str]:
+    def _flavored_templates(self, event: MatchEvent, roster: dict[str, Player]) -> list[str]:
+        bank, candidates_fn = _FLAVORED_EVENT_TYPES[event.type]
         player = roster.get(event.player_ids[0]) if event.player_ids else None
-        flavor = self._dominant_flavor(player)
-        return PROGRESSION_TEMPLATES_BY_FLAVOR[flavor]
+        flavor = self._dominant_flavor(player, candidates_fn)
+        return bank[flavor]
 
-    def _dominant_flavor(self, player: Player | None) -> str:
+    def _dominant_flavor(
+        self, player: Player | None, candidates_fn: Callable[[PlayerAttributes], dict[str, int]]
+    ) -> str:
         """Which attribute (if any) is strong enough to earn its own
         phrasing for this player — see commentary/CLAUDE.md on
         attribute-flavored phrasing."""
         if player is None:
             return "default"
-        attrs = player.attributes
-        candidates = {"pace": attrs.pace, "dribbling": attrs.dribbling, "vision": attrs.vision}
+        candidates = candidates_fn(player.attributes)
         best = max(candidates, key=candidates.get)
         return best if candidates[best] >= FLAVOR_THRESHOLD else "default"
 

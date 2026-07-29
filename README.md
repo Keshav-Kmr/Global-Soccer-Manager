@@ -101,7 +101,8 @@ feed from a script, no API or UI involved yet.
       starter; both respect a 5-substitution limit; never triggered by a
       red card, matching real football)
 - [x] Commentary generation (template banks, attribute-flavored phrasing
-      for progression events) — `scripts/menu.py` narrates full matches now
+      for progression/shot/foul events) — `scripts/menu.py` narrates full
+      matches now
 - [x] Statistical/balance test suite (now also covering brilliance, home
       advantage, weather, mid-match control, fouls/cards/injuries, and
       commentary)

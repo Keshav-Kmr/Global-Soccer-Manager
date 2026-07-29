@@ -15,8 +15,16 @@ _DRIBBLER = make_player("dribbler", "Dribbler Player", Position.W, overall=50, d
 _VISIONARY = make_player("visionary", "Visionary Player", Position.CM, overall=50, vision=90)
 _AVERAGE = make_player("average", "Average Player", Position.CM, overall=50)
 _KEEPER = make_player("keeper", "Keeper Player", Position.GK, overall=50)
+_POWER_SHOOTER = make_player("power_shooter", "Power Shooter", Position.ST, overall=50, shooting=90)
+_COOL_FINISHER = make_player("cool_finisher", "Cool Finisher", Position.ST, overall=50, composure=90)
+_RECKLESS_TACKLER = make_player("reckless_tackler", "Reckless Tackler", Position.CB, overall=50, aggression=90)
 
-_ROSTER = {p.id: p for p in (_PACEY, _DRIBBLER, _VISIONARY, _AVERAGE, _KEEPER)}
+_ROSTER = {
+    p.id: p for p in (
+        _PACEY, _DRIBBLER, _VISIONARY, _AVERAGE, _KEEPER,
+        _POWER_SHOOTER, _COOL_FINISHER, _RECKLESS_TACKLER,
+    )
+}
 
 # One representative event per EventType, covering every placeholder shape
 # the templates can reference (single player, two players, no player...).
@@ -94,6 +102,57 @@ def test_average_player_gets_default_progression_text_not_a_flavor():
     lines = {generator.describe(event, _ROSTER, random.Random(seed)) for seed in range(30)}
 
     assert all("explodes" not in line and "dances" not in line and "picks out" not in line for line in lines)
+
+
+def test_power_shooter_gets_power_flavored_shot_text():
+    generator = CommentaryGenerator()
+    event = MatchEvent(minute=30, type=EventType.SHOT, team_id="home", player_ids=["power_shooter"])
+
+    lines = {generator.describe(event, _ROSTER, random.Random(seed)) for seed in range(30)}
+
+    assert any("power" in line or "thunderous" in line or "really goes for it" in line for line in lines)
+
+
+def test_cool_finisher_gets_composure_flavored_shot_text():
+    generator = CommentaryGenerator()
+    event = MatchEvent(minute=30, type=EventType.SHOT, team_id="home", player_ids=["cool_finisher"])
+
+    lines = {generator.describe(event, _ROSTER, random.Random(seed)) for seed in range(30)}
+
+    assert any("composure" in line or "calmly" in line or "takes their time" in line for line in lines)
+
+
+def test_average_shooter_gets_default_shot_text():
+    generator = CommentaryGenerator()
+    event = MatchEvent(minute=30, type=EventType.SHOT, team_id="home", player_ids=["average"])
+
+    lines = {generator.describe(event, _ROSTER, random.Random(seed)) for seed in range(30)}
+
+    assert all("power" not in line and "composure" not in line and "calmly" not in line for line in lines)
+
+
+def test_reckless_tackler_gets_reckless_flavored_foul_text():
+    generator = CommentaryGenerator()
+    event = MatchEvent(
+        minute=40, type=EventType.FOUL, team_id="home",
+        player_ids=["reckless_tackler", "pacey"], payload={"phase": "midfield"},
+    )
+
+    lines = {generator.describe(event, _ROSTER, random.Random(seed)) for seed in range(30)}
+
+    assert any("reckless" in line or "crunching" in line for line in lines)
+
+
+def test_measured_tackler_gets_default_foul_text():
+    generator = CommentaryGenerator()
+    event = MatchEvent(
+        minute=40, type=EventType.FOUL, team_id="home",
+        player_ids=["average", "pacey"], payload={"phase": "midfield"},
+    )
+
+    lines = {generator.describe(event, _ROSTER, random.Random(seed)) for seed in range(30)}
+
+    assert all("reckless" not in line and "crunching" not in line for line in lines)
 
 
 def test_same_seed_produces_the_same_line():

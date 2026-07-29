@@ -3,11 +3,11 @@
 Data, not logic — see commentary/CLAUDE.md. Adding variety or a new event
 type's phrasing means adding a string here, never touching generator.py.
 
-POSSESSION_PROGRESS is the one event type with its own dedicated table
-(PROGRESSION_TEMPLATES_BY_FLAVOR) instead of a flat list: which bank gets
-picked depends on which attribute dominates the protagonist's profile, so
-the same event type reads differently depending on who actually produced
-it — see commentary/CLAUDE.md on attribute-flavored phrasing.
+POSSESSION_PROGRESS, SHOT, and FOUL each have their own dedicated flavor
+table instead of a flat list: which bank gets picked depends on an
+attribute of the player(s) involved, so the same event type reads
+differently depending on who actually produced it — see commentary/CLAUDE.md
+on attribute-flavored phrasing.
 """
 
 from app.engine.events import EventType
@@ -27,11 +27,6 @@ TEMPLATES: dict[EventType, list[str]] = {
         "{player} does something special there!",
         "Pure quality from {player}!",
     ],
-    EventType.FOUL: [
-        "Foul! {team} concede a free kick.",
-        "The referee's whistle goes — foul against {team}.",
-        "{tackler} catches {victim} — that's a foul.",
-    ],
     EventType.CARD: [
         "It's a {color} card for {player}.",
         "{player} is booked — {color}!",
@@ -41,11 +36,6 @@ TEMPLATES: dict[EventType, list[str]] = {
         "{player} is down and needs treatment.",
         "Concern here for {player} — they can't continue.",
         "That looks painful for {player}.",
-    ],
-    EventType.SHOT: [
-        "{player} lets fly!",
-        "{player} goes for goal!",
-        "{player} strikes it!",
     ],
     EventType.GOAL: [
         "GOAL! {player} finds the net for {team}!",
@@ -80,6 +70,37 @@ TEMPLATES: dict[EventType, list[str]] = {
     EventType.FULL_TIME: [
         "That's full time!",
         "The final whistle blows.",
+    ],
+}
+
+SHOT_TEMPLATES_BY_FLAVOR: dict[str, list[str]] = {
+    "shooting": [
+        "{player} strikes it with real power!",
+        "{player} unleashes a thunderous effort!",
+        "{player} really goes for it!",
+    ],
+    "composure": [
+        "{player} keeps their composure and shoots!",
+        "{player} calmly picks a spot!",
+        "{player} takes their time and finishes!",
+    ],
+    "default": [
+        "{player} lets fly!",
+        "{player} goes for goal!",
+        "{player} strikes it!",
+    ],
+}
+
+FOUL_TEMPLATES_BY_FLAVOR: dict[str, list[str]] = {
+    "reckless": [
+        "{tackler} flies into a reckless challenge on {victim}!",
+        "A crunching, over-the-top tackle from {tackler} on {victim}!",
+        "{tackler} goes in hard and late on {victim}!",
+    ],
+    "default": [
+        "Foul! {team} concede a free kick.",
+        "The referee's whistle goes — foul against {team}.",
+        "{tackler} catches {victim} — that's a foul.",
     ],
 }
 
