@@ -19,7 +19,9 @@ Per the class-based convention in `backend/CLAUDE.md`, `simulate_match` is a
 thin entry point delegating to classes with single responsibilities, e.g.
 `MatchSimulator` (owns the overall loop and match state), `PossessionChainEngine`
 (runs one chain's phase transitions), `ProbabilityModel` (the contest formula,
-§4), `TacticalMatchup` (§2), `FatigueModel` (§3), and `PhaseRatingCalculator` /
+§4), `TacticalMatchup` (§2, tactic-vs-tactic modifiers with no player data),
+`ManMarking` (§2, the one tactic effect that needs player data, kept separate
+for exactly that reason), `FatigueModel` (§3), and `PhaseRatingCalculator` /
 `ProtagonistSelector` (`engine/rating/CLAUDE.md` — how player attributes turn
 into the ratings the contest formula compares). Each gets its own file under
 `engine/`, grouped into subfolders when a concern is cohesive enough to
@@ -104,7 +106,20 @@ tuning constants, see §9):
 Implementation shape: a `TacticalMatchup` function takes both teams' tactics
 and the current phase, and returns a modifier pair `(mod_a, mod_b)` applied
 multiplicatively to the effective ratings before the contest formula (§4)
-runs.
+runs. Width fits this shape directly (`tactical_matchup.py`): whichever side
+plays WIDE gets a bonus in FINAL_THIRD, whichever plays NARROW gets one in
+MIDFIELD — applied to both the attacking and defending side using their own
+width setting, not just whoever's attacking.
+
+Marking scheme (man-to-man) does **not** fit this shape — deciding whether
+it pays off requires knowing how good the specific attacking protagonist is
+this contest, which would break `TacticalMatchup`'s "no player data" purity.
+It lives in its own class instead, `engine/man_marking.py`'s `ManMarking`:
+a flat coverage penalty for the marker being tied to their man, offset by a
+bonus that only kicks in when the attacker's individual phase rating clears
+a threshold — man-marking a genuine star pays off, man-marking an ordinary
+player is a net loss. Never applied to the SHOT phase (a goalkeeper facing
+a shot isn't "man marking" the shooter).
 
 ## 3. Fatigue
 
@@ -297,13 +312,18 @@ Two independent mechanisms, deliberately kept separate:
     `Team.bench`, the outgoing one is added to it.
 
 Since substitutions physically swap players between `starting_xi` and
-`bench`, `Team.__post_init__` snapshots both lists (`_original_starting_xi`,
-`_original_bench`) so `Match.__init__` can restore them at the start of
-every match — the same fix, for the same reason, as the fitness/
-yellow_cards/available reset: without it, a substitution made by one
-`Match()` call would permanently corrupt a `Team` object reused by a later,
-independent `Match()` call (exactly what the statistical tests do for
-efficiency).
+`bench`, something has to keep a later, independent `Match()` reusing the
+same `Team` object from inheriting whatever a *previous* match's
+substitutions left behind (the same problem the fitness/yellow_cards/
+available reset solves). `Match.__init__` snapshots `_original_starting_xi`/
+`_original_bench` **lazily, on the first match a Team ever plays** (they
+start `None` — see `Team.__post_init__`), and restores from that snapshot
+on every later one. This has to happen in `Match.__init__`, not at `Team`
+construction: callers routinely customize `starting_xi` right after
+`build_team()` (swapping in a hand-built star player) *before* ever
+constructing a `Match`, and snapshotting at construction time would capture
+the pre-customization roster and silently discard the customization on
+every match — a real regression this project hit once already.
 
 ## 9. Tuning constants
 
@@ -374,7 +394,7 @@ to change mid-match — existing callers are unaffected.
 - xG-style advanced stats display.
 - Morale, pitch condition, referee personality profiles beyond the single
   per-match strictness modifier in §6.
-- AI-driven automatic substitutions (tiredness/injury-triggered) — the
-  mechanism exists (§8, §11) but nothing calls it automatically yet.
+- Offside and full set-piece simulation (corners/free-kicks as their own
+  sequences, rather than a foul just restarting a normal chain, §7).
 - Anything related to persistence — the engine just yields events; what
   happens to them after is `delivery/`'s problem.

@@ -47,13 +47,22 @@ class Match:
         # A fresh 90 minutes: restore squad composition (undoing any
         # substitution from a previous Match reusing these Team objects)
         # and reset match-day player/team state, so nothing ever leaks in
-        # from a prior Match — see Team.__post_init__.
-        team_a.starting_xi = list(team_a._original_starting_xi)
-        team_a.bench = list(team_a._original_bench)
-        team_b.starting_xi = list(team_b._original_starting_xi)
-        team_b.bench = list(team_b._original_bench)
-        team_a.substitutions_used = 0
-        team_b.substitutions_used = 0
+        # from a prior Match. The *first* Match a Team ever plays snapshots
+        # its current starting_xi/bench as the pristine reference — taken
+        # here, not at Team construction, so any pre-match customization
+        # (e.g. swapping in a hand-built star player right after
+        # build_team()) is captured, not wiped out. Every later Match
+        # reusing the same Team restores from that snapshot instead of
+        # re-capturing whatever a previous match's substitutions left
+        # behind — see Team.__post_init__.
+        for team in (team_a, team_b):
+            if team._original_starting_xi is None:
+                team._original_starting_xi = list(team.starting_xi)
+                team._original_bench = list(team.bench)
+            else:
+                team.starting_xi = list(team._original_starting_xi)
+                team.bench = list(team._original_bench)
+            team.substitutions_used = 0
 
         for player in (*team_a.starting_xi, *team_a.bench, *team_b.starting_xi, *team_b.bench):
             player.fitness = 1.0

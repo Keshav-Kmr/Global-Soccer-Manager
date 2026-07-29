@@ -266,7 +266,7 @@ Design decisions and detailed technical specs live alongside the code as
 `CLAUDE.md` files, one per area of the project:
 
 - [`docs/MATCH_ENGINE_NOTES.md`](docs/MATCH_ENGINE_NOTES.md) — plain-language
-  walkthrough of how the match engine works today (in French)
+  walkthrough of how the match engine works today
 - [`CLAUDE.md`](CLAUDE.md) — project vision, structure, and conventions
 - [`backend/CLAUDE.md`](backend/CLAUDE.md) — backend stack and code conventions
 - [`backend/app/engine/CLAUDE.md`](backend/app/engine/CLAUDE.md) — the match simulation engine, in depth

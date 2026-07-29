@@ -1,381 +1,405 @@
-# Notes de session — Moteur de simulation de match
+# Session notes — Match simulation engine
 
-Ce document résume, en français et de façon pédagogique, ce qui a été
-conçu et codé jusqu'ici. C'est un aide-mémoire pour toi, pas une spec
-technique — pour le détail précis destiné au code, voir les `CLAUDE.md`
-listés en bas de ce fichier.
+This document summarizes, in plain and pedagogical terms, what's been
+designed and built so far. It's a memory aid for you, not a technical
+spec — for exact detail meant for coding, see the `CLAUDE.md` files listed
+at the bottom of this document.
 
-**Où on en est** : le moteur de simulation de match (backend uniquement,
-pas d'API, pas de frontend, pas de base de données) est fonctionnel et
-testé. On peut simuler un match complet entre deux équipes avec des stats
-personnalisées, en direct dans le terminal.
-
----
-
-## 1. Le concept du jeu
-
-Un simulateur de saison de foot + gestion d'équipe, open source. La pièce
-centrale (celle sur laquelle on travaille) est un **moteur de simulation de
-match texte** — pas un terrain visuel, mais un fil d'événements avec du
-suspense ("il entre dans la surface... il tire... BUT !" ou "raté !"),
-dans l'esprit des vieux jeux de gestion texte (Hattrick, Football Manager
-version texte).
-
-### Les trois piliers d'un résultat
-
-Tout résultat de match doit s'expliquer par trois forces qui interagissent,
-volontairement équilibrées pour qu'aucune n'écrase les autres :
-
-1. **La qualité des joueurs** — leurs attributs individuels.
-2. **La tactique** — doit avoir un effet structurel réel, pas juste
-   cosmétique. Peut être changée **en plein match** avec effet immédiat.
-3. **La chance** — aucun duel n'est jamais garanti, plus des moments rares
-   d'éclair de génie.
+**Where things stand**: the match simulation engine (backend only — no
+API, no frontend, no database) is functional and tested. You can simulate
+a full match between two teams with custom stats, live in the terminal.
 
 ---
 
-## 2. Structure du projet
+## 1. The game concept
+
+An open-source football season simulator + team management game. The
+centerpiece (what we're working on) is a **text match simulation engine**
+— not a visual pitch, but an event feed with tension ("he enters the
+box... he shoots... GOAL!" or "missed!"), in the spirit of old text-based
+management games (Hattrick, text-era Football Manager).
+
+### The three pillars of a result
+
+Every match outcome must be explainable by three interacting forces,
+deliberately balanced so none of them overrides the others:
+
+1. **Player quality** — their individual attributes.
+2. **Tactics** — must have a real structural effect, not just a cosmetic
+   one. Can be changed **mid-match** with immediate effect.
+3. **Luck** — no duel is ever guaranteed, plus rare moments of brilliance.
+
+---
+
+## 2. Project structure
 
 ```
 Global-Soccer-Manager/
-├── CLAUDE.md                       # vision du projet, conventions générales
-├── README.md                       # roadmap complète (10 phases), doc publique
+├── CLAUDE.md                       # project vision, general conventions
+├── README.md                       # full roadmap (10 phases), public doc
 ├── docs/
-│   └── MATCH_ENGINE_NOTES.md       # ce fichier
+│   └── MATCH_ENGINE_NOTES.md       # this file
 ├── backend/
-│   ├── CLAUDE.md                   # conventions backend (couches, style de code)
+│   ├── CLAUDE.md                   # backend conventions (layers, code style)
 │   ├── pyproject.toml
-│   ├── conftest.py                 # rend `app` importable pour pytest
+│   ├── conftest.py                 # makes `app` importable for pytest
 │   ├── app/
-│   │   ├── domain/                 # modèles de données purs
+│   │   ├── domain/                 # pure data models
 │   │   │   ├── player.py           # Player, PlayerAttributes, Position
 │   │   │   ├── team.py             # Team
-│   │   │   ├── tactic.py           # Tactic + tous les dials (enums)
+│   │   │   ├── tactic.py           # Tactic + all the dials (enums)
 │   │   │   └── match_context.py    # Weather, MatchContext
-│   │   ├── engine/                 # le moteur de simulation
-│   │   │   ├── CLAUDE.md           # LE doc de référence technique du moteur
-│   │   │   ├── phase.py            # enum Phase (build_up/midfield/final_third/shot)
+│   │   ├── engine/                 # the simulation engine
+│   │   │   ├── CLAUDE.md           # THE technical reference doc for the engine
+│   │   │   ├── phase.py            # Phase enum (build_up/midfield/final_third/shot)
 │   │   │   ├── events.py           # EventType, MatchEvent
-│   │   │   ├── summary.py          # final_score() — petit utilitaire
-│   │   │   ├── probability.py      # ProbabilityModel — LA formule de duel
+│   │   │   ├── summary.py          # final_score() — small utility
+│   │   │   ├── probability.py      # ProbabilityModel — THE contest formula
 │   │   │   ├── fatigue.py          # FatigueModel
-│   │   │   ├── tactical_matchup.py # TacticalMatchup — confrontation des tactiques
-│   │   │   ├── brilliance.py       # BrillianceCheck — éclair de génie
+│   │   │   ├── tactical_matchup.py # TacticalMatchup — tactic-vs-tactic modifiers
+│   │   │   ├── man_marking.py      # ManMarking — man-to-man marking trade-off
+│   │   │   ├── brilliance.py       # BrillianceCheck — moment of brilliance
 │   │   │   ├── home_advantage.py   # HomeAdvantage
 │   │   │   ├── weather_modifiers.py# WeatherModifiers
-│   │   │   ├── foul.py             # FoulCheck — faute ou tacle propre ?
-│   │   │   ├── card.py             # CardCheck — jaune/rouge
-│   │   │   ├── injury.py           # InjuryCheck — blessure
-│   │   │   ├── match_situation.py  # MatchSituation (domicile/météo/arbitre, groupés)
-│   │   │   ├── auto_substitution.py# AutoSubstitution — remplacements auto (blessure/fatigue)
-│   │   │   ├── possession_chain.py # PossessionChainEngine — assemble tout
-│   │   │   ├── match.py            # Match — objet stateful, pilotable en direct
-│   │   │   ├── match_simulator.py  # MatchSimulator — wrapper "simule d'un coup"
+│   │   │   ├── foul.py             # FoulCheck — foul or clean tackle?
+│   │   │   ├── card.py             # CardCheck — yellow/red
+│   │   │   ├── injury.py           # InjuryCheck — injury
+│   │   │   ├── match_situation.py  # MatchSituation (home/weather/referee, bundled)
+│   │   │   ├── auto_substitution.py# AutoSubstitution — automatic subs (injury/fatigue)
+│   │   │   ├── possession_chain.py # PossessionChainEngine — wires everything together
+│   │   │   ├── match.py            # Match — stateful object, steppable live
+│   │   │   ├── match_simulator.py  # MatchSimulator — "run it all at once" wrapper
 │   │   │   └── rating/
-│   │   │       ├── CLAUDE.md       # doc de référence de la couche rating
-│   │   │       ├── tables.py       # poids par phase/attribut — EN DONNÉES
+│   │   │       ├── CLAUDE.md       # reference doc for the rating layer
+│   │   │       ├── tables.py       # weights per phase/attribute — AS DATA
 │   │   │       ├── calculator.py   # PhaseRatingCalculator
 │   │   │       └── selector.py     # ProtagonistSelector
 │   │   ├── commentary/
-│   │   │   ├── CLAUDE.md           # doc de référence de la couche commentaire
-│   │   │   ├── templates.py        # banques de textes — EN DONNÉES
+│   │   │   ├── CLAUDE.md           # reference doc for the commentary layer
+│   │   │   ├── templates.py        # text banks — AS DATA
 │   │   │   └── generator.py        # CommentaryGenerator
-│   │   └── delivery/CLAUDE.md      # doc (pas encore codé — API/WebSocket)
+│   │   └── delivery/CLAUDE.md      # doc (not coded yet — API/WebSocket)
 │   ├── scripts/
-│   │   ├── _teams.py               # make_player()/build_team() partagés
-│   │   ├── simulate_demo.py        # un scénario simple, non-interactif
-│   │   └── menu.py                 # MENU INTERACTIF — 6 scénarios, narré en direct
-│   └── tests/                      # 52 tests, tous verts
-└── frontend/CLAUDE.md              # pas commencé
+│   │   ├── _teams.py               # shared make_player()/build_team()
+│   │   ├── simulate_demo.py        # one simple, non-interactive scenario
+│   │   └── menu.py                 # INTERACTIVE MENU — 6 scenarios, narrated live
+│   └── tests/                      # 61 tests, all green
+└── frontend/CLAUDE.md              # not started
 ```
 
 ---
 
-## 3. Le modèle de données
+## 3. The data model
 
-**`PlayerAttributes`** (échelle 1-99) : pace, dribbling, passing, vision,
+**`PlayerAttributes`** (1-99 scale): pace, dribbling, passing, vision,
 shooting, tackling, marking, strength, positioning, aggression, composure,
-stamina, **flair** (pilote l'éclair de génie), + 3 attributs gardien
-(reflexes, handling, gk_positioning).
+stamina, **flair** (drives moments of brilliance), + 3 goalkeeper
+attributes (reflexes, handling, gk_positioning).
 
-**`Team`** : `starting_xi` (11 joueurs obligatoires), `bench`, `tactic`.
+**`Team`**: `starting_xi` (11 players required), `bench`, `tactic`.
 
-**`Tactic`** : mentality (defensive/balanced/attacking), tempo
+**`Tactic`**: mentality (defensive/balanced/attacking), tempo
 (slow/normal/fast), pressing (low/medium/high), width (narrow/normal/wide),
-defensive_line (deep/normal/high), marking_scheme (zonal/man_to_man).
-⚠️ `width` et `marking_scheme` existent dans le modèle mais **ne sont pas
-encore branchés mécaniquement** dans le moteur (seuls mentality, pressing,
-defensive_line ont un effet réel pour l'instant).
+defensive_line (deep/normal/high), marking_scheme (zonal/man_to_man). All
+six dials now have a real mechanical effect (§5).
 
-**`MatchContext`** : juste `weather` (clear/rain/wind) pour l'instant.
+**`MatchContext`**: just `weather` (clear/rain/wind) for now.
 
 ---
 
-## 4. Comment un duel se résout (le cœur du moteur)
+## 4. How a duel resolves (the heart of the engine)
 
-Chaque confrontation (progression de balle, tir...) suit le même pipeline,
-dans `possession_chain.py` :
+Every contest (ball progression, a shot...) follows the same pipeline, in
+`possession_chain.py`:
 
-1. **Note d'équipe** (`PhaseRatingCalculator.rate`) : moyenne pondérée des
-   attributs des joueurs éligibles pour cette phase, poids définis dans
-   `rating/tables.py` (données, pas de code en dur).
-2. **Note individuelle** du protagoniste sélectionné (`ProtagonistSelector`,
-   choix pondéré aléatoire — favorise les joueurs avec bonne vision/
-   positionnement).
-3. **Mélange** : `effective = 0.7 × note_équipe + 0.3 × note_individuelle`
-   (constante `BLEND` dans `rating/tables.py`). C'est ce qui fait qu'un
-   joueur individuellement excellent tire la performance de l'équipe vers
-   le haut sans l'écraser complètement.
-4. **Éclair de génie** (`BrillianceCheck`) : check indépendant et rare
-   (1% à 6% de chance selon le `flair` du protagoniste attaquant) qui, s'il
-   se déclenche, multiplie sa note individuelle ×1.8 pour ce duel précis
-   uniquement. Émet un événement `MOMENT_OF_BRILLIANCE`.
-5. **Modificateurs de contexte**, appliqués en multiplicateurs :
-   - `TacticalMatchup` : confrontation des tactiques des deux équipes
-     (ex : pressing haut pénalise la relance adverse ; ligne défensive
-     haute favorise l'attaquant rapide en phase finale).
-   - `HomeAdvantage` : bonus ×1.05 pour l'équipe à domicile (toujours la
-     première équipe passée à `Match`).
-   - `WeatherModifiers` : pluie pénalise les phases de progression (×0.92),
-     vent pénalise le tir (×0.90).
-6. **Fatigue** (`FatigueModel`) : chaque joueur perd de la forme à chaque
-   phase jouée (plus vite si tempo/pressing élevés) ; la forme réduit la
-   note effective jusqu'à un plancher de 0.7 (jamais 0 — un joueur fatigué
-   est moins bon, pas inutile).
-7. **Résolution finale** (`ProbabilityModel`) : la formule logistique
-   classique, avec un plancher/plafond de probabilité :
+1. **Team rating** (`PhaseRatingCalculator.rate`): a weighted average of
+   the attributes of players eligible for this phase, weights defined in
+   `rating/tables.py` (data, not hardcoded logic).
+2. **Individual rating** of the selected protagonist (`ProtagonistSelector`,
+   weighted random choice — favors players with good vision/positioning).
+3. **Blend**: `effective = 0.7 × team_rating + 0.3 × individual_rating`
+   (the `BLEND` constant in `rating/tables.py`). This is what lets an
+   individually excellent player pull the team's performance up without
+   completely overriding it.
+4. **Moment of brilliance** (`BrillianceCheck`): an independent, rare check
+   (1% to 6% chance depending on the attacking protagonist's `flair`)
+   that, if it triggers, multiplies their individual rating ×1.8 for that
+   one contest only. Emits a `MOMENT_OF_BRILLIANCE` event.
+5. **Context modifiers**, applied as multipliers:
+   - `TacticalMatchup`: the two teams' tactics compared against each other
+     (e.g. high pressing penalizes the opponent's build-up; a high
+     defensive line favors a fast attacker in the final phase; width
+     favors wingers in FINAL_THIRD or central players in MIDFIELD).
+   - `ManMarking`: man-to-man marking's trade-off (below).
+   - `HomeAdvantage`: ×1.05 bonus for the home team (always the first team
+     passed to `Match`).
+   - `WeatherModifiers`: rain penalizes progression phases (×0.92), wind
+     penalizes the shot (×0.90).
+6. **Fatigue** (`FatigueModel`): every player loses fitness with each phase
+   played (faster with high tempo/pressing); fitness reduces the effective
+   rating down to a floor of 0.7 (never 0 — a tired player is worse, not
+   useless).
+7. **Final resolution** (`ProbabilityModel`): the classic logistic formula,
+   with a probability floor/ceiling:
 
    ```
-   p = 1 / (1 + e^-((note_attaque - note_défense) / SPREAD))
+   p = 1 / (1 + e^-((attack_rating - defense_rating) / SPREAD))
    p = clamp(p, P_MIN, P_MAX)
-   résultat = rng.random() < p
+   outcome = rng.random() < p
    ```
 
-### Constantes actuelles (calibrées empiriquement, pas inventées)
+### Current constants (calibrated empirically, not guessed)
 
-| Constante | Valeur | Fichier |
+| Constant | Value | File |
 |---|---|---|
 | `SPREAD` | 60.0 | `probability.py` |
 | `P_MIN` / `P_MAX` | 0.20 / 0.80 | `probability.py` |
-| `BLEND` | 0.7 (équipe) / 0.3 (individuel) | `rating/tables.py` |
-| `MINUTES_PER_CHAIN` | 2 (→ 45 séquences/match) | `match.py` |
-| `BONUS_MULTIPLIER` (éclair de génie) | ×1.8 | `brilliance.py` |
-| Chance d'éclair de génie | 1% (flair=1) à 6% (flair=99) | `brilliance.py` |
+| `BLEND` | 0.7 (team) / 0.3 (individual) | `rating/tables.py` |
+| `MINUTES_PER_CHAIN` | 2 (→ 45 sequences/match) | `match.py` |
+| `BONUS_MULTIPLIER` (brilliance) | ×1.8 | `brilliance.py` |
+| Brilliance chance | 1% (flair=1) to 6% (flair=99) | `brilliance.py` |
 | `HOME_BONUS` | ×1.05 | `home_advantage.py` |
-| Pénalité pluie | ×0.92 (phases de progression) | `weather_modifiers.py` |
-| Pénalité vent | ×0.90 (tir uniquement) | `weather_modifiers.py` |
-| Fatigue — plancher | ×0.7 | `fatigue.py` |
+| Rain penalty | ×0.92 (progression phases) | `weather_modifiers.py` |
+| Wind penalty | ×0.90 (shot only) | `weather_modifiers.py` |
+| Fatigue floor | ×0.7 | `fatigue.py` |
 
-**⚠️ Découverte importante** : une chaîne de possession exige de gagner
-*plusieurs duels séquentiels* (3 phases + le tir). Des probabilités par
-duel raisonnables se **combinent multiplicativement** et peuvent écraser
-l'outsider au niveau du match complet même si chaque duel individuel reste
-"équitable". Les valeurs ci-dessus ont été retunées après avoir constaté
-qu'un écart de seulement 15 points donnait 93% de victoires et moins de 1%
-de chances à l'outsider. Résultat actuel avec les valeurs tunées : équipes
-égales ≈ 33/33/34 (victoire/nul/défaite), écart réaliste (15 pts) ≈
-57/28/15, écart extrême (40 pts) ≈ 91/8/1. Total de buts par match proche
-de 2,5-3 pour des équipes de niveau proche.
+**⚠️ Important discovery**: a possession chain requires winning *several
+sequential duels* (3 phases + the shot). Reasonable per-duel probabilities
+**compound multiplicatively** and can crush the underdog at the full-match
+level even though each individual duel stays "fair." The values above were
+retuned after finding that a mere 15-point gap produced a 93% win rate with
+the underdog winning under 1% of the time. Current result with the tuned
+values: evenly matched teams ≈ 33/33/34 (win/draw/loss), realistic gap (15
+pts) ≈ 57/28/15, extreme gap (40 pts) ≈ 91/8/1. Total goals per match close
+to 2.5-3 for teams of similar level.
 
 ---
 
-## 5. La machine à états (une "chaîne de possession")
+## 5. Width and man-marking
+
+The last two tactic dials, long documented but never actually wired, now
+have a real effect:
+
+- **`width`**: lives in `TacticalMatchup` (no player data needed). A team
+  set to WIDE gets a bonus in FINAL_THIRD (wingers/fullbacks get to
+  express themselves); NARROW gets its bonus in MIDFIELD (central
+  overload). Applies to whichever side is attacking **and** whichever is
+  defending, based on their own setting — a team defending wide also
+  covers the flank better.
+- **`marking_scheme`**: lives in its own class, `ManMarking`
+  (`engine/man_marking.py`), kept separate from `TacticalMatchup` —
+  because it needs to know whether the attacker in front of it is a
+  genuine threat (their individual rating for this phase), and
+  `TacticalMatchup` has to stay a pure function with no player data.
+  Man-to-man marking gives a bonus against a player who clears a quality
+  threshold (75/99), but a flat penalty the rest of the time (the marker
+  is glued to their man, no longer covering their zone) — a real
+  trade-off, not a free bonus. Never applies to the shot phase (a
+  goalkeeper facing a shot isn't "man-marking" the shooter).
+
+**Bug (another one!) found while writing this feature's statistical test**:
+the previous fix (§10, capturing `Team`'s original composition to restore
+it at every match) took that snapshot **at `Team` construction time** — so
+*before* a script does `home.starting_xi[9] = my_star_player`. Result:
+`Match` silently overwrote that change at kickoff, and the menu's
+"star striker" scenario never actually featured the star striker anymore,
+with no error or warning. Fixed by making the snapshot **lazy**: it's
+taken the first time a `Team` plays a match (which correctly captures any
+customization done beforehand), and restored only for later matches
+reusing the same object.
+
+---
+
+## 6. The state machine (a "possession chain")
 
 ```
 RESTART → BUILD_UP → MIDFIELD → FINAL_THIRD → SHOT → GOAL / SAVE / BLOCK / OFF_TARGET
              |            |            |
-          turnover     turnover     turnover  →  l'autre équipe récupère la balle
+          turnover     turnover     turnover  →  the other team gets the ball
 ```
 
-Chaque flèche "succès" est un duel résolu via le pipeline du §4. Un
-turnover à n'importe quelle phase arrête la chaîne — **sauf si c'est une
-faute** (§6 ci-dessous), auquel cas l'équipe qui attaquait garde le ballon.
-**Pas encore implémenté** : hors-jeu, corners/coups francs comme séquences
-à part entière (ils sont dans la roadmap).
+Every "success" arrow is a duel resolved via the §4 pipeline. A turnover
+at any phase ends the chain — **unless it's a foul** (§7 below), in which
+case the attacking team keeps the ball. **Not implemented yet**: offside,
+corners/free-kicks as their own sequences (they're on the roadmap).
 
 ---
 
-## 6. Fautes, cartons, blessures
+## 7. Fouls, cards, injuries
 
-Ne se déclenche que quand l'attaquant **perd** un duel de progression
-(BUILD_UP/MIDFIELD/FINAL_THIRD) — jamais sur le tir (un penalty est un
-mécanisme à part, pas encore fait).
+Only triggers when the attacker **loses** a progression duel
+(BUILD_UP/MIDFIELD/FINAL_THIRD) — never on the shot (a penalty is a
+separate mechanic, not built yet).
 
-1. **`FoulCheck`** : 25% des duels perdus sont en fait une faute (pas un
-   tacle propre). Sévérité = agressivité du tacleur − dribble du porteur de
-   balle, plancher à 0, multipliée par zone (FINAL_THIRD plus sévère que
-   BUILD_UP — arrêter une attaque avancée est plus "cynique").
-2. **Conséquence mécanique clé** : une faute = coup franc, **pas un
-   turnover** — l'équipe qui attaquait garde la balle pour la séquence
-   suivante (`ChainResult.possession_retained`). C'est ce qui rend une
-   faute vraiment différente d'un tacle propre, pas juste un habillage
-   textuel différent.
-3. **`CardCheck`** : `danger = sévérité × sévérité_arbitre`. La sévérité de
-   l'arbitre est tirée une seule fois par match (0.7 à 1.3, dans
-   `Match.__init__`) — certains matchs sont sifflés sévèrement, d'autres
-   laissent beaucoup jouer, ça fait partie du pilier chance. Un 2e carton
-   jaune pour le même joueur devient automatiquement un rouge.
-4. **`InjuryCheck`** : risque indépendant et rare, sur la victime de la
-   faute (le porteur de balle fauté) ou sur le tacleur lui-même en cas de
-   tacle propre mais engagé (une blessure sur un geste 100% légal, ça
-   arrive aussi en vrai).
-5. **Carton rouge ou blessure** → le joueur passe `available = False` (pas
-   une suppression physique de la liste des 11 !). Pourquoi : supprimer
-   vraiment de la liste aurait cassé les tests statistiques qui réutilisent
-   les mêmes objets `Team`/`Player` sur des centaines de matchs — exact
-   même type de bug que celui déjà rencontré avec `fitness`. `available`
-   est remis à `True` à chaque nouveau `Match`, comme `fitness` et
+1. **`FoulCheck`**: 25% of lost duels turn out to be a foul (not a clean
+   tackle). Severity = tackler's aggression − ball carrier's dribbling,
+   floored at 0, scaled by zone (FINAL_THIRD is more severe than BUILD_UP
+   — stopping an advanced attack reads as more "cynical").
+2. **Key mechanical consequence**: a foul = a free kick, **not a
+   turnover** — the attacking team keeps the ball for the next sequence
+   (`ChainResult.possession_retained`). This is what makes a foul genuinely
+   different from a clean tackle, not just different flavor text.
+3. **`CardCheck`**: `danger = severity × referee_severity`. The referee's
+   severity is drawn once per match (0.7 to 1.3, in `Match.__init__`) —
+   some matches are whistled strictly, others let a lot go, which is part
+   of the luck pillar. A 2nd yellow card for the same player automatically
+   becomes a red.
+4. **`InjuryCheck`**: an independent, rare risk, on the victim of the foul
+   (the fouled ball carrier) or on the tackler themselves in the case of a
+   clean but committed tackle (an injury on a 100% legal challenge happens
+   in real life too).
+5. **Red card or injury** → the player's `available` flag becomes `False`
+   (not a physical removal from the list of 11!). Why: actually removing
+   them from the list would have broken the statistical tests that reuse
+   the same `Team`/`Player` objects across hundreds of matches — the exact
+   same kind of bug already hit with `fitness`. `available` is reset to
+   `True` at the start of every new `Match`, like `fitness` and
    `yellow_cards`.
 
-⚠️ Détail piégeux si tu relis les événements bruts : pour `FOUL`/`CARD`,
-`team_id` désigne l'équipe **qui a commis la faute/le carton** — alors que
-pour `POSSESSION_PROGRESS`/`TURNOVER`, `team_id` désigne l'équipe qui
-**attaquait**. Deux conventions différentes selon le type d'événement, pas
-un bug.
+⚠️ A subtle detail if you re-read the raw events: for `FOUL`/`CARD`,
+`team_id` names the team **that committed the foul/card** — whereas for
+`POSSESSION_PROGRESS`/`TURNOVER`, `team_id` names the team that **was
+attacking**. Two different conventions depending on event type, not a bug.
 
 ---
 
-## 7. Commentaire narratif
+## 8. Narrative commentary
 
-`app/commentary/` transforme un `MatchEvent` brut en phrase — c'est ce qui
-répond à la toute première demande du projet ("il tire... BUT !" plutôt
-qu'un JSON illisible). Volontairement séparé du moteur : le moteur ne
-formate jamais de texte, le commentaire ne décide jamais d'un résultat.
+`app/commentary/` turns a raw `MatchEvent` into a sentence — this is what
+answers the project's very first ask ("he shoots... GOAL!" rather than
+unreadable JSON). Deliberately separate from the engine: the engine never
+formats text, commentary never decides an outcome.
 
-- **`templates.py`** : des banques de phrases par type d'événement (données,
-  pas de code). Une phrase est choisie au hasard dans la banque à chaque
-  fois pour éviter la répétition.
-- **`POSSESSION_PROGRESS` a un traitement spécial** : la banque choisie
-  dépend de l'attribut dominant du protagoniste (pace/dribbling/vision), et
-  seulement si cet attribut dépasse 70/99 — sinon phrase générique. Un
-  joueur rapide "explose" ou "part en pointe", un dribbleur "élimine",
-  personne ne parle de vitesse pour un joueur moyen.
-- **`CommentaryGenerator.describe(event, roster, rng)`** : `roster` est un
-  dict `id joueur -> Player` (les `MatchEvent` ne contiennent que des ids,
-  jamais les objets joueurs complets — le commentaire est ce qui les
-  résout en noms).
-- **Déterminisme** : narrer tout un match d'un coup (comme le fait
-  `menu.py`) se fait *après* que le RNG interne du moteur a déjà servi pour
-  toute la simulation — donc on utilise un second `random.Random(seed)`
-  avec le **même seed**, ce qui donne un texte tout aussi reproductible
-  sans réutiliser la même instance.
+- **`templates.py`**: banks of phrases per event type (data, not code). A
+  phrase is picked at random from the bank each time to avoid repetition.
+- **`POSSESSION_PROGRESS` gets special treatment**: the bank picked
+  depends on the protagonist's dominant attribute (pace/dribbling/vision),
+  and only if that attribute clears 70/99 — otherwise, generic phrasing. A
+  fast player "explodes" or "bursts through," a dribbler "beats the
+  defender," nobody talks about speed for an average player.
+- **`CommentaryGenerator.describe(event, roster, rng)`**: `roster` is a
+  dict of `player id -> Player` (`MatchEvent`s only ever carry ids, never
+  full player objects — commentary is what resolves them into names).
+- **Determinism**: narrating a whole match in one pass (as `menu.py` does)
+  happens *after* the engine's internal RNG has already been fully
+  consumed by the simulation — so a second `random.Random(seed)` is used
+  with the **same seed**, giving text that's just as reproducible without
+  reusing the same instance.
 
-`scripts/menu.py` utilise maintenant vraiment ce système (avant, il avait
-son propre formateur jetable en attendant que ce module existe).
+`scripts/menu.py` now genuinely uses this system (it used to have its own
+throwaway formatter while waiting for this module to exist).
 
 ---
 
-## 8. Contrôle en direct : `Match` — la pièce la plus importante côté architecture
+## 9. Live control: `Match` — the single most important architectural piece
 
-`Match` (dans `match.py`) est un objet *stateful*, pas une fonction qui
-tourne d'un coup. Il expose :
+`Match` (in `match.py`) is a *stateful* object, not a function that runs
+straight through. It exposes:
 
-- `play_next_chain()` — avance d'une séquence de possession.
-- `change_tactic(team, tactic)` — change la tactique d'une équipe, effectif
-  **immédiatement** à la séquence suivante.
-- `substitute(team, joueur_sortant, joueur_entrant)` — remplace un joueur,
-  effectif immédiatement aussi.
+- `play_next_chain()` — advances by one possession sequence.
+- `change_tactic(team, tactic)` — changes a team's tactic, effective
+  **immediately** on the next sequence.
+- `substitute(team, player_out, player_in)` — swaps a player, also
+  effective immediately.
 
-**Pourquoi ça marche sans plomberie compliquée** : le moteur lit toujours
-`team.tactic` et `team.starting_xi` en direct sur l'objet `Team`, jamais
-une copie figée au coup d'envoi. Donc modifier ces objets entre deux appels
-à `play_next_chain()` suffit — c'est tout le mécanisme.
+**Why this works with no complicated plumbing**: the engine always reads
+`team.tactic` and `team.starting_xi` live off the `Team` object, never a
+snapshot frozen at kickoff. So mutating those objects between two
+`play_next_chain()` calls is the entire mechanism.
 
-`MatchSimulator.simulate()` reste un simple raccourci qui fait tourner un
-`Match` jusqu'au bout d'un coup, pour les cas où on ne veut rien changer en
-cours de route (tests, scripts simples).
+`MatchSimulator.simulate()` remains a simple shortcut that runs a `Match`
+straight through in one go, for cases where nothing needs to change along
+the way (tests, simple scripts).
 
-**Prouvé par test statistique** (`tests/engine/test_match.py`) : passer en
-tactique offensive à la mi-temps augmente mesurablement les buts en 2e
-mi-temps ; faire rentrer un buteur bien meilleur aussi. Pas juste accepté
-en entrée et ignoré.
-
----
-
-## 9. Remplacements automatiques
-
-`AutoSubstitution` (`engine/auto_substitution.py`) tourne après chaque
-séquence, pour les deux équipes. Deux déclencheurs, bien distincts de
-`Match.substitute()` (le contrôle manuel du §8, sans limite ni gestion de
-banc) :
-
-1. **Blessure** : dès qu'un joueur est blessé, tente immédiatement de faire
-   entrer un remplaçant du **même poste** depuis le banc.
-2. **Fatigue** : quand la forme d'un titulaire passe sous 0.72 (calibré
-   empiriquement — même le joueur le plus sollicité descend rarement sous
-   ~0.53 sur 90 minutes avec le taux de fatigue actuel), le titulaire le
-   plus fatigué est remplacé s'il y a un joueur du même poste disponible.
-   Un seul joueur par vérification, pas toute l'équipe d'un coup.
-
-**Règle importante** : un carton rouge ne déclenche **jamais** de
-remplacement automatique (en vrai foot, on ne remplace pas un joueur
-expulsé — l'équipe joue à 10). Prouvé par test.
-
-Les deux respectent une limite de 5 remplacements par équipe
-(`Team.substitutions_used`), gérée uniquement par `AutoSubstitution` (pas
-par `Match.substitute()`, qui reste un outil bas niveau sans limite).
-
-⚠️ Pour que ça marche, il fallait un vrai banc de touche dans les équipes
-de test/démo (`_teams.py`, `factories.py` génèrent maintenant 5 remplaçants
-par équipe) — sinon `AutoSubstitution` n'a jamais personne à faire entrer.
-
-**Bug (encore) rencontré et corrigé** : remplacer un joueur modifie
-vraiment `starting_xi`/`bench` — mais comme les tests statistiques
-réutilisent les mêmes objets `Team` sur des centaines de matchs, un
-remplacement fait dans un match "contaminait" le suivant (composition
-d'équipe différente → résultats différents → tests de reproductibilité
-cassés). Solution : `Team` capture maintenant une copie de sa composition
-d'origine à la construction, que `Match` restaure au coup d'envoi de
-**chaque** nouveau match — le même principe que la remise à zéro de
-`fitness`, appliqué cette fois à la composition de l'équipe elle-même.
+**Proven by statistical test** (`tests/engine/test_match.py`): switching to
+an attacking tactic at halftime measurably increases second-half goals;
+bringing on a much better striker does too. Not just accepted as input and
+ignored.
 
 ---
 
-## 10. Comment tester toi-même
+## 10. Automatic substitutions
+
+`AutoSubstitution` (`engine/auto_substitution.py`) runs after every
+sequence, for both teams. Two triggers, kept clearly distinct from
+`Match.substitute()` (the manual control from §9, with no limit or bench
+bookkeeping):
+
+1. **Injury**: as soon as a player is injured, immediately tries to bring
+   on a replacement of the **same position** from the bench.
+2. **Tiredness**: when a starter's fitness drops below 0.72 (calibrated
+   empirically — even the most heavily used player rarely drops below
+   ~0.53 over 90 minutes at the current fatigue rate), the most tired
+   starter is replaced if a same-position player is available on the
+   bench. Only one player per check, not the whole team at once.
+
+**Important rule**: a red card **never** triggers an automatic
+substitution (in real football, you don't replace a sent-off player — the
+team plays with 10 men). Proven by test.
+
+Both respect a limit of 5 substitutions per team (`Team.substitutions_used`),
+managed only by `AutoSubstitution` (not by `Match.substitute()`, which
+remains a low-level tool with no limit).
+
+⚠️ For this to work, test/demo teams needed a real bench (`_teams.py`,
+`factories.py` now generate 5 substitutes per team) — otherwise
+`AutoSubstitution` never has anyone to bring on.
+
+**Bug (yet another one) hit and fixed**: substituting a player really
+mutates `starting_xi`/`bench` — but since the statistical tests reuse the
+same `Team` objects across hundreds of matches, a substitution made in one
+match "contaminated" the next (different squad composition → different
+results → broken reproducibility tests). Fix: `Team` now captures a copy
+of its original composition, which `Match` restores at the kickoff of
+**every** new match — the same principle as resetting `fitness`, applied
+this time to the team's own composition (see §5 for the follow-up bug this
+same fix caused, and how it was corrected).
+
+---
+
+## 11. How to test it yourself
 
 ```bash
 cd backend
-python3 -m pytest -q              # les 52 tests (unitaires + statistiques)
-python3 scripts/simulate_demo.py  # un scénario fixe, feed brut d'événements
-python3 scripts/menu.py           # MENU INTERACTIF, 6 scénarios :
+python3 -m pytest -q              # the 61 tests (unit + statistical)
+python3 scripts/simulate_demo.py  # one fixed scenario, raw event feed
+python3 scripts/menu.py           # INTERACTIVE MENU, 6 scenarios:
 ```
 
-Scénarios du menu :
-1. Équipes égales (60 vs 60)
-2. Forte vs faible, tactiques opposées (80 vs 45)
-3. Buteur star qui porte une équipe moyenne
-4. Ligne défensive haute vs ailiers rapides
-5. Même niveau, mais sous la pluie
-6. **Contrôle en direct** : changement de tactique + remplacement à la
-   mi-temps, pour voir l'effet immédiat
+Menu scenarios:
+1. Evenly matched teams (60 vs 60)
+2. Strong vs weak, contrasting tactics (80 vs 45)
+3. Star striker carrying a mediocre team
+4. High defensive line vs pacey wingers
+5. Same level, but in the rain
+6. **Live control**: tactic switch + substitution at halftime, to see the
+   immediate effect
 
-Pour créer ton propre scénario : copier une fonction `_scenario_...` dans
-`menu.py`, ajuster `overall`, les `Tactic(...)`, ou remplacer un joueur
-précis via `make_player(..., shooting=95, pace=90, ...)`.
-
----
-
-## 11. Ce qui reste à faire (court terme)
-
-- Étendre le commentaire "flavoré par attribut" (§7) à d'autres types
-  d'événements que `POSSESSION_PROGRESS` (tir, faute...)
-- Brancher `width` et `marking_scheme` dans `TacticalMatchup`
-- Hors-jeu, corners/coups francs comme séquences à part entière (pour
-  l'instant une faute redémarre juste une chaîne normale)
-- Après ça : API/WebSocket (Phase 2), persistance (Phase 3), frontend
-  (Phase 4)... voir la roadmap complète dans `README.md`
+To build your own scenario: copy a `_scenario_...` function in `menu.py`,
+adjust `overall`, the `Tactic(...)`, or replace a specific player via
+`make_player(..., shooting=95, pace=90, ...)`.
 
 ---
 
-## 12. Où trouver le détail technique précis
+## 12. What's left to do (short term)
 
-Ce fichier est un résumé pour se rappeler la vue d'ensemble. Pour le détail
-exact destiné à coder (formules complètes, tables de poids, taxonomie
-d'événements) :
+- Extend "attribute-flavored" commentary (§8) to other event types beyond
+  `POSSESSION_PROGRESS` (shot, foul...)
+- Offside, corners/free-kicks as their own sequences (for now a foul just
+  restarts a normal chain)
+- After that: API/WebSocket (Phase 2), persistence (Phase 3), frontend
+  (Phase 4)... see the full roadmap in `README.md`
 
-- [`CLAUDE.md`](../CLAUDE.md) — vision globale, conventions
-- [`backend/CLAUDE.md`](../backend/CLAUDE.md) — conventions de code backend
-- [`backend/app/engine/CLAUDE.md`](../backend/app/engine/CLAUDE.md) — **le doc de référence du moteur**
-- [`backend/app/commentary/CLAUDE.md`](../backend/app/commentary/CLAUDE.md) — la couche commentaire
-- [`backend/app/engine/rating/CLAUDE.md`](../backend/app/engine/rating/CLAUDE.md) — la couche stats → notes
-- [`README.md`](../README.md) — roadmap complète (10 phases)
+---
+
+## 13. Where to find precise technical detail
+
+This file is a summary to help you remember the big picture. For exact
+detail meant for coding (full formulas, weight tables, event taxonomy):
+
+- [`CLAUDE.md`](../CLAUDE.md) — overall vision, conventions
+- [`backend/CLAUDE.md`](../backend/CLAUDE.md) — backend code conventions
+- [`backend/app/engine/CLAUDE.md`](../backend/app/engine/CLAUDE.md) — **the engine's reference doc**
+- [`backend/app/commentary/CLAUDE.md`](../backend/app/commentary/CLAUDE.md) — the commentary layer
+- [`backend/app/engine/rating/CLAUDE.md`](../backend/app/engine/rating/CLAUDE.md) — the stats → ratings layer
+- [`README.md`](../README.md) — full roadmap (10 phases)

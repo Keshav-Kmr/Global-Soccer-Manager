@@ -29,6 +29,7 @@ from app.engine.fatigue import FatigueModel
 from app.engine.foul import FoulCheck
 from app.engine.home_advantage import HomeAdvantage
 from app.engine.injury import InjuryCheck
+from app.engine.man_marking import ManMarking
 from app.engine.match_situation import MatchSituation
 from app.engine.phase import Phase
 from app.engine.probability import ProbabilityModel
@@ -80,6 +81,7 @@ class PossessionChainEngine:
         self._foul = FoulCheck()
         self._card = CardCheck()
         self._injury = InjuryCheck()
+        self._man_marking = ManMarking()
 
     def run(
         self,
@@ -272,9 +274,10 @@ class PossessionChainEngine:
     ) -> tuple[_RatingResult, _RatingResult]:
         """The contest formula from engine/CLAUDE.md §4: team/individual
         blend, an independent brilliance check on the attacker, then the
-        tactical-matchup/home-advantage/weather modifiers, then fatigue."""
-        attacker_blend = self._blended_rating(phase, attacking, protagonist_attacker, "attack")
-        defender_blend = self._blended_rating(phase, defending, protagonist_defender, "defense")
+        tactical-matchup/home-advantage/weather/man-marking modifiers,
+        then fatigue."""
+        attacker_blend, attacker_individual = self._blended_rating(phase, attacking, protagonist_attacker, "attack")
+        defender_blend, _ = self._blended_rating(phase, defending, protagonist_defender, "defense")
 
         brilliance_player = None
         if self._brilliance.roll(protagonist_attacker, rng):
@@ -285,6 +288,7 @@ class PossessionChainEngine:
         attacker_mod *= self._weather.attacker_modifier(phase, situation.context.weather)
         attacker_mod *= self._home_advantage.modifier(attacking.id, situation.home_team_id)
         defender_mod *= self._home_advantage.modifier(defending.id, situation.home_team_id)
+        defender_mod *= self._man_marking.defender_modifier(defending.tactic, attacker_individual, phase)
 
         attacker_fatigue = self._fatigue.average_multiplier(attacker_fatigue_group)
         defender_fatigue = self._fatigue.average_multiplier(defender_fatigue_group)
@@ -293,7 +297,11 @@ class PossessionChainEngine:
         effective_defender = defender_blend * defender_mod * defender_fatigue
         return _RatingResult(effective_attacker, brilliance_player), _RatingResult(effective_defender)
 
-    def _blended_rating(self, phase: Phase, team: Team, protagonist: Player, side: str) -> float:
+    def _blended_rating(self, phase: Phase, team: Team, protagonist: Player, side: str) -> tuple[float, float]:
+        """Returns (blend, individual_rating) — the individual figure is
+        also what ManMarking uses to decide if this attacker is worth
+        specially marking."""
         team_rating = self._rating.rate(phase, team.starting_xi, side)
         individual_rating = self._rating.individual_score(phase, protagonist, side)
-        return BLEND * team_rating + (1 - BLEND) * individual_rating
+        blend = BLEND * team_rating + (1 - BLEND) * individual_rating
+        return blend, individual_rating

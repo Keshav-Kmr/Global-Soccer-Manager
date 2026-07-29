@@ -22,10 +22,12 @@ class Team:
         if len(self.starting_xi) != 11:
             raise ValueError(f"starting_xi must have exactly 11 players, got {len(self.starting_xi)}")
 
-        # Match() restores starting_xi/bench from these at the start of
-        # every match, so substitutions made during one Match (manual or
-        # automatic) never leak into a second, independent Match() call
-        # that happens to reuse the same Team object — the same reason
-        # Player.fitness/available get reset, applied to squad composition.
-        self._original_starting_xi = list(self.starting_xi)
-        self._original_bench = list(self.bench)
+        # Deliberately NOT snapshotted here: a caller commonly customizes
+        # starting_xi/bench after construction (e.g. swapping in a hand-
+        # built star player) before ever starting a Match, and snapshotting
+        # this early would capture the pre-customization roster instead.
+        # Match.__init__ takes this snapshot lazily on the *first* match it
+        # simulates for this Team, and restores from it on every later one
+        # — see Match.__init__ for why.
+        self._original_starting_xi: list[Player] | None = None
+        self._original_bench: list[Player] | None = None
