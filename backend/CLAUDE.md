@@ -30,13 +30,21 @@ backend/
                          This is where routes' actual logic lives.
       schemas.py        - Pydantic request/response + WebSocket wire models
     persistence/
-      repositories/     - repository interfaces (e.g. MatchRepository ABC) +
-                         concrete implementations (in-memory now, DB later).
+      repository.py     - repository interfaces (e.g. MatchRepository ABC)
+      in_memory_*.py    - concrete implementations (in-memory now, DB later).
                          Services depend on the interface, never on a
-                         concrete DB client directly.
+                         concrete DB client directly. Split into a
+                         `repositories/` subfolder if/when there's more than
+                         one repository concept — a single ABC + one impl
+                         doesn't need one yet.
+    main.py             - FastAPI app factory; `uvicorn app.main:app`
   tests/
     engine/            - unit + statistical tests for the simulation
+    delivery/          - FastAPI TestClient tests (REST + WebSocket)
     ...
+  .venv/               - required for delivery/ (FastAPI, uvicorn, httpx
+                         aren't available system-wide); pytest alone
+                         works without it for everything else
   pyproject.toml
 ```
 

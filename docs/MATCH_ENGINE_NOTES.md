@@ -78,12 +78,23 @@ Global-Soccer-Manager/
 │   │   │   ├── CLAUDE.md           # reference doc for the commentary layer
 │   │   │   ├── templates.py        # text banks — AS DATA
 │   │   │   └── generator.py        # CommentaryGenerator
-│   │   └── delivery/CLAUDE.md      # doc (not coded yet — API/WebSocket)
+│   │   ├── delivery/
+│   │   │   ├── CLAUDE.md           # reference doc for the API/WebSocket layer
+│   │   │   ├── schemas.py          # Pydantic wire models + domain conversion
+│   │   │   ├── api/matches.py      # FastAPI routes: POST /matches, WS /stream
+│   │   │   └── services/
+│   │   │       ├── match_service.py# MatchService — session lifecycle
+│   │   │       └── pacer.py        # Pacer — the only asyncio.sleep in the codebase
+│   │   ├── persistence/
+│   │   │   ├── repository.py       # MatchRepository (interface)
+│   │   │   └── in_memory_repository.py
+│   │   └── main.py                 # FastAPI app factory (`uvicorn app.main:app`)
 │   ├── scripts/
 │   │   ├── _teams.py               # shared make_player()/build_team()
 │   │   ├── simulate_demo.py        # one simple, non-interactive scenario
 │   │   └── menu.py                 # INTERACTIVE MENU — 6 scenarios, narrated live
-│   └── tests/                      # 66 tests, all green
+│   ├── .venv/                      # required for delivery/ (FastAPI, uvicorn, httpx)
+│   └── tests/                      # 77 tests, all green
 └── frontend/CLAUDE.md              # not started
 ```
 
@@ -364,10 +375,19 @@ same fix caused, and how it was corrected).
 
 ```bash
 cd backend
-python3 -m pytest -q              # the 66 tests (unit + statistical)
-python3 scripts/simulate_demo.py  # one fixed scenario, raw event feed
-python3 scripts/menu.py           # INTERACTIVE MENU, 6 scenarios:
+python -m venv .venv && source .venv/bin/activate   # first time only
+pip install -e ".[dev]"                             # first time only
+
+pytest -q                         # the 77 tests (unit + statistical + API)
+python scripts/simulate_demo.py   # one fixed scenario, raw event feed
+python scripts/menu.py            # INTERACTIVE MENU, 6 scenarios:
+uvicorn app.main:app --reload     # run the live API (§13)
 ```
+
+(Everything except `tests/delivery/` also runs fine with plain system
+`python3`/`pytest` — no venv needed — since FastAPI/uvicorn/httpx are only
+required for the delivery layer. Using the venv for everything is simplest
+and is what's assumed above.)
 
 Menu scenarios:
 1. Evenly matched teams (60 vs 60)
@@ -391,12 +411,72 @@ adjust `overall`, the `Tactic(...)`, or replace a specific player via
   already have it
 - Offside, corners/free-kicks as their own sequences (for now a foul just
   restarts a normal chain)
-- After that: API/WebSocket (Phase 2), persistence (Phase 3), frontend
-  (Phase 4)... see the full roadmap in `README.md`
+- A minimal manual/CLI WebSocket client script for `§13`'s API — today the
+  only proof it works is automated `TestClient` tests, not a hand-run demo
+  the way `scripts/menu.py` is for the engine
+- Real persistence (Phase 3): swap `InMemoryMatchRepository` for a database-
+  backed one behind the same `MatchRepository` interface — nothing in
+  `MatchService` or the routes should need to change
+- After that: frontend (Phase 4)... see the full roadmap in `README.md`
 
 ---
 
-## 13. Where to find precise technical detail
+## 13. Live delivery: API + WebSocket (Phase 2)
+
+The match engine is now reachable over HTTP/WebSocket, not just the
+terminal. `app/main.py` is the FastAPI app factory (`uvicorn app.main:app`).
+
+- **`POST /matches`** — body has `team_a`/`team_b` (full squads, wire
+  format in `delivery/schemas.py`), optional `seed`, optional `weather`.
+  Returns `{"match_id": "..."}` and starts the simulation **immediately**,
+  server-side, in a background task — it does not wait for anyone to
+  connect.
+- **`GET /matches/{match_id}/stream`** (WebSocket) — sends the full backlog
+  first (fast, no delay), then keeps polling and forwarding new events as
+  the simulation produces them. Closes with code `4004` if the match
+  doesn't exist. Every message includes the rendered commentary line, not
+  just the raw event.
+- **One simulation per match, however many viewers.** `MatchService` runs
+  `Match.play_next_chain()` in a loop inside a single background task per
+  match, appending each chain's events (with commentary) to an in-memory
+  `MatchRepository`. All WebSocket connections for that `match_id` just
+  read from the same growing list — proven by test (`test_two_viewers_of_
+  the_same_match_see_the_same_events`).
+- **`Pacer`** is the only place `asyncio.sleep` happens (`delivery/services/
+  pacer.py`), so the engine itself stays a plain, real-time-agnostic
+  function. Its pace (real seconds per game-minute) is a constructor
+  argument, which is what let tests inject a near-zero pace instead of
+  waiting out a real ~27-second match.
+
+**New venv required**: FastAPI/uvicorn/httpx aren't available system-wide
+like pytest was — `backend/.venv` now exists specifically for this
+(`pip install -e ".[dev]"`).
+
+**Non-obvious bugs hit while building this:**
+
+1. `MatchService._run()` originally read events from the `ChainResult` that
+   `play_next_chain()` returns — but `KICKOFF` (added in `Match.__init__`,
+   before any chain runs) and `FULL_TIME` (appended inside
+   `play_next_chain()` itself, separately from the `ChainResult`) both live
+   on `match.events`, Match's own running log, not in that per-chain
+   result. The fix reads `match.events[sent:]` each iteration instead —
+   otherwise every WebSocket stream would silently start on the first
+   chain's events and end right after the last goal/shot, never actually
+   announcing kickoff or full time.
+2. **FastAPI's `TestClient` has to wrap the *entire* test**, not just the
+   WebSocket part. `MatchService.start_match()` schedules the simulation
+   via `asyncio.create_task()`; that only keeps running if a single
+   persistent event loop backs the whole test, which `with TestClient(app)
+   as client:` provides. Doing `client.post(...)` outside that `with` block
+   tears down the loop hosting the background task the instant the request
+   finishes — the match then never progresses, and any WebSocket polling
+   for new events just hangs forever (this is exactly what happened on the
+   first attempt, until the test was rewritten around one `with` block for
+   the whole flow).
+
+---
+
+## 14. Where to find precise technical detail
 
 This file is a summary to help you remember the big picture. For exact
 detail meant for coding (full formulas, weight tables, event taxonomy):
@@ -406,4 +486,5 @@ detail meant for coding (full formulas, weight tables, event taxonomy):
 - [`backend/app/engine/CLAUDE.md`](../backend/app/engine/CLAUDE.md) — **the engine's reference doc**
 - [`backend/app/commentary/CLAUDE.md`](../backend/app/commentary/CLAUDE.md) — the commentary layer
 - [`backend/app/engine/rating/CLAUDE.md`](../backend/app/engine/rating/CLAUDE.md) — the stats → ratings layer
+- [`backend/app/delivery/CLAUDE.md`](../backend/app/delivery/CLAUDE.md) — the API/WebSocket layer
 - [`README.md`](../README.md) — full roadmap (10 phases)

@@ -2,7 +2,14 @@
 
 Exposes the match engine over HTTP/WebSocket. This layer owns *timing* and
 *transport*; it must not contain any simulation logic or probability code —
-that all lives in `app/engine`.
+that all lives in `app/engine`. Implemented: `app/main.py` (the FastAPI app
+factory — run with `uvicorn app.main:app --reload` from `backend/`, inside
+the venv), `delivery/api/matches.py`, `delivery/services/match_service.py`,
+`delivery/services/pacer.py`, `delivery/schemas.py`.
+
+Requires the `backend/.venv` virtual environment (`pip install -e ".[dev]"`)
+— FastAPI/uvicorn/httpx aren't available system-wide. See
+`backend/CLAUDE.md`'s Getting Started section.
 
 ## Internal structure: routes vs. logic
 
@@ -60,18 +67,19 @@ not wait for a WebSocket client to connect.
 ## WebSocket
 
 `GET /matches/{match_id}/stream` — connect to receive events as they're
-paced out.
+paced out. Closes immediately with code `4004` if `match_id` doesn't exist.
 
-Wire format per message (mirrors `MatchEvent` from the engine, plus the
+Wire format per message (`MatchEventMessage` in `schemas.py`; mirrors the
+engine's `MatchEvent` — `team_id`→`team`, `player_ids`→`players` — plus the
 rendered commentary line):
 
 ```json
 {
   "minute": 34,
-  "type": "SHOT",
-  "team": "team_a",
+  "type": "shot",
+  "team": "home",
   "players": ["player_id_123"],
-  "payload": { "shot_quality": "good" },
+  "payload": {},
   "commentary": "Dubois dances past a challenge and gets a shot away!"
 }
 ```
@@ -95,6 +103,25 @@ This keeps the MVP simple (in-memory, single-process) while still behaving
 correctly for the "multiple people watching the same match" case, which is
 core to what makes this a shared/social simulator rather than a single-player
 toy.
+
+## Testing
+
+Two things that aren't obvious the first time:
+
+- **`Pacer` takes `seconds_per_game_minute` in its constructor**, defaulting
+  to the real pace constant. Tests inject a near-zero value
+  (`Pacer(seconds_per_game_minute=0.001)`) via `MatchService(repository, pacer=...)`
+  so a full match completes in well under a second instead of ~27 real
+  seconds (45 chains × `MINUTES_PER_CHAIN` × the real pace).
+- **`TestClient` must be used as a context manager for the *entire* test**,
+  not just around the WebSocket part. `MatchService.start_match()` schedules
+  the simulation via `asyncio.create_task()`; that task only keeps running
+  concurrently with the rest of the test if a single persistent event loop
+  backs the whole flow, which `with TestClient(app) as client:` provides.
+  Call `client.post(...)` *outside* that `with` block (or in a separate one)
+  and the background task's loop gets torn down with it — the match never
+  progresses, and a WebSocket polling for new events hangs forever. This bit
+  the first version of these tests; see `tests/delivery/test_matches_api.py`.
 
 ## Pace configuration
 

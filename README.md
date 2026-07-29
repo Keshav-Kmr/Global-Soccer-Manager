@@ -55,9 +55,9 @@ has to be right before anything else is worth building. Phases are meant to
 be built roughly in order; later phases will get more detail as earlier ones
 land.
 
-**🚧 Currently in: Phase 0 (design), moving into Phase 1.**
+**🚧 Currently in: Phase 2 (Live Delivery), with Phase 1 essentially complete.**
 
-<details open>
+<details>
 <summary><b>Phase 0 — Foundations (design)</b></summary>
 
 - [x] Vision & scope defined
@@ -75,7 +75,7 @@ land.
 
 </details>
 
-<details open>
+<details>
 <summary><b>Phase 1 — Match Engine MVP</b></summary>
 
 The first real milestone: simulate a full match and print its commentary
@@ -121,14 +121,22 @@ the full story and current values.
 
 </details>
 
-<details>
+<details open>
 <summary><b>Phase 2 — Live Delivery</b></summary>
 
-- [ ] FastAPI REST + WebSocket layer (`api/`/`services/` split)
-- [ ] `Pacer` for live-paced match streaming
-- [ ] Multi-viewer session handling (one simulation, many watchers)
-- [ ] **Milestone:** watch a full match live over WebSocket from a simple
-      client
+- [x] FastAPI REST + WebSocket layer (`api/`/`services/` split)
+- [x] `Pacer` for live-paced match streaming (fixed pace, injectable for
+      tests)
+- [x] Multi-viewer session handling (one simulation, many watchers, proven
+      by test — a late viewer gets the full backlog then joins live)
+- [x] In-memory `MatchRepository` behind an interface (Phase 3 will add a
+      real database implementation, not touching services/routes)
+- [x] **Milestone:** create a match via `POST /matches` and watch it live
+      over WebSocket, narrated with commentary, from a simple client
+      (`fastapi.testclient.TestClient` in `tests/delivery/`, or a real
+      WebSocket client against `uvicorn app.main:app`)
+- [ ] A minimal manual/CLI WebSocket client script (today's proof is
+      automated tests, not a hand-run demo like `scripts/menu.py`)
 
 </details>
 
@@ -206,25 +214,27 @@ At a glance:
 
 ```
  Client (frontend, TBD)
-        │  WebSocket (live match events)
+        │  WebSocket (live, commentary-annotated match events)
         ▼
- delivery/api      →  thin FastAPI routes
+ delivery/api      →  thin FastAPI routes (POST /matches, WS /stream)
         │
         ▼
- delivery/services →  MatchService: session lifecycle, pacing
-        │
+ delivery/services →  MatchService: session lifecycle, Pacer, in-memory
+        │                event log (persistence/, behind an interface)
         ▼
- engine            →  pure, deterministic match simulation
+ engine + commentary →  pure, deterministic match simulation, narrated
         │
         ▼
  domain            →  Player, Team, Formation, Tactic
 ```
 
-The simulation engine is a plain, seeded, synchronous generator — it knows
-nothing about WebSockets or real time. A separate `Pacer` component paces its
-output for live viewers, which means the exact same engine code can run a
-single live-streamed match or simulate thousands of matches instantly for
-balance testing, with identical, reproducible results.
+The simulation engine is a plain, seeded, synchronous step function — it
+knows nothing about WebSockets or real time. A separate `Pacer` component
+(the only place `asyncio.sleep` is allowed) paces its output for live
+viewers, which means the exact same engine code can run a single
+live-streamed match or simulate thousands of matches instantly for balance
+testing, with identical, reproducible results. Multiple viewers of the same
+match share one simulation — the engine is never re-invoked per viewer.
 
 ## Repository structure
 
@@ -235,27 +245,31 @@ backend/
     engine/       - the match simulation engine
     commentary/   - turns match events into narrative text
     delivery/
-      api/        - FastAPI routes
-      services/   - orchestration (MatchService, session lifecycle)
-    persistence/  - repository interfaces (in-memory for now)
+      api/        - FastAPI routes (matches.py: create + WebSocket stream)
+      services/   - orchestration (MatchService, Pacer)
+      schemas.py  - Pydantic wire models + domain conversion
+    persistence/  - MatchRepository interface + in-memory implementation
+    main.py       - FastAPI app factory (`uvicorn app.main:app`)
   tests/
+    delivery/     - FastAPI TestClient tests (REST + WebSocket)
 frontend/         - not started yet
 ```
 
 ## Getting started
-
-The match engine has a first runnable slice — no API/frontend yet, just the
-simulation itself.
 
 ```bash
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-pytest                       # unit + statistical balance tests
-python scripts/simulate_demo.py   # simulate one match, print its event feed
-python scripts/menu.py            # interactive scenario picker, incl. live
-                                   # mid-match tactic changes/substitutions
+pytest                             # all tests: engine, commentary, delivery
+python scripts/simulate_demo.py    # simulate one match, print its event feed
+python scripts/menu.py             # interactive scenario picker, incl. live
+                                    # mid-match tactic changes/substitutions
+
+uvicorn app.main:app --reload      # run the API — POST /matches, then
+                                    # connect a WebSocket client to
+                                    # /matches/{id}/stream to watch it live
 ```
 
 Edit `scripts/simulate_demo.py`, or add a scenario to `scripts/menu.py`, to
