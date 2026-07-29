@@ -14,6 +14,10 @@ FORMATION_4_3_3 = [
     Position.W, Position.ST, Position.W,
 ]
 
+# A small bench covering the positions most likely to need a like-for-like
+# replacement (engine/auto_substitution.py) — not a full matchday squad.
+BENCH_POSITIONS = [Position.GK, Position.CB, Position.CM, Position.W, Position.ST]
+
 
 def make_player(player_id: str, name: str, position: Position, overall: int, **overrides) -> Player:
     """A player with every attribute set to `overall`, unless overridden
@@ -29,11 +33,15 @@ def make_player(player_id: str, name: str, position: Position, overall: int, **o
 
 
 def build_team(team_id: str, name: str, overall: int, tactic: Tactic | None = None) -> Team:
-    """An 11-player 4-3-3 squad with every player rated `overall`. Swap any
-    entry in the returned team's `starting_xi` to give a specific player
-    different stats (see menu.py's star-striker scenario)."""
+    """An 11-player 4-3-3 squad plus a small bench, every player rated
+    `overall`. Swap any entry in the returned team's `starting_xi` to give
+    a specific player different stats (see menu.py's star-striker scenario)."""
     players = [
         make_player(f"{team_id}_{i}", f"{name} #{i}", position, overall)
         for i, position in enumerate(FORMATION_4_3_3)
     ]
-    return Team(id=team_id, name=name, starting_xi=players, tactic=tactic or Tactic())
+    bench = [
+        make_player(f"{team_id}_sub{i}", f"{name} Sub {i}", position, overall)
+        for i, position in enumerate(BENCH_POSITIONS)
+    ]
+    return Team(id=team_id, name=name, starting_xi=players, tactic=tactic or Tactic(), bench=bench)

@@ -269,19 +269,41 @@ not a separate simulation system.
 
 ## 8. Substitutions
 
-Live, human-in-the-loop substitutions exist now via `Match.substitute()`
-(§11) — a caller can swap a starting player for any other `Player` between
-possession chains and it takes effect on the very next one. What's still
-missing is the *automatic* side:
+Two independent mechanisms, deliberately kept separate:
 
-- Tiredness-triggered: once a player's fatigue factor crosses a threshold
-  (roughly minute 60-75 depending on Stamina), sub in a bench player of the
-  same position if one is available.
-- Injury-triggered: immediate, same-position bench player if available.
+- **`Match.substitute()`** (§11) — the low-level, human/live-control
+  primitive. A caller swaps a starting player for any other `Player`
+  between possession chains and it takes effect on the very next one. No
+  bench bookkeeping, no limit — it's a direct tool, not a simulated
+  decision.
+- **`AutoSubstitution`** (`engine/auto_substitution.py`) — the automatic
+  side, checked by `Match` after every possession chain:
+  - **Injury-triggered**: whenever an INJURY event fires, immediately try
+    to bring on a like-for-like bench player (same `Position`). Never
+    triggered by a red card — real football doesn't let you replace a
+    sent-off player, the team just plays short-handed.
+  - **Tiredness-triggered**: once a starter's `fitness` drops below
+    `TIREDNESS_FITNESS_THRESHOLD` (0.72 — calibrated empirically; even the
+    most heavily-used player rarely drops below ~0.53 given `fatigue.py`'s
+    current depletion rate, so a naively "realistic-sounding" 0.5 would
+    almost never fire), the single most tired eligible starter is swapped
+    for a like-for-like bench player, if one exists. Only ever one player
+    per check, so a team doesn't burn every substitution in one tiring
+    chain.
+  - Both respect a shared per-team limit, `MAX_SUBSTITUTIONS = 5`, tracked
+    via `Team.substitutions_used` — which `Match.substitute()` does *not*
+    touch or check. `AutoSubstitution` also does the bench bookkeeping
+    `Match.substitute()` skips: the incoming player is removed from
+    `Team.bench`, the outgoing one is added to it.
 
-`Match.substitute()` also doesn't manage bench bookkeeping (removing the
-incoming player from `Team.bench`, enforcing a substitution limit) — that's
-squad-management scope (README roadmap Phase 5), not the match engine's.
+Since substitutions physically swap players between `starting_xi` and
+`bench`, `Team.__post_init__` snapshots both lists (`_original_starting_xi`,
+`_original_bench`) so `Match.__init__` can restore them at the start of
+every match — the same fix, for the same reason, as the fitness/
+yellow_cards/available reset: without it, a substitution made by one
+`Match()` call would permanently corrupt a `Team` object reused by a later,
+independent `Match()` call (exactly what the statistical tests do for
+efficiency).
 
 ## 9. Tuning constants
 
@@ -311,7 +333,7 @@ Implemented today:
 | BLOCK | shooter |
 | OFF_TARGET | shooter |
 | TACTIC_CHANGE | team, new mentality/pressing (§11) |
-| SUBSTITUTION | player_out, player_in (§11) |
+| SUBSTITUTION | player_out, player_in, reason: manual/injury/tiredness (§8, §11) |
 | FULL_TIME | — |
 
 Planned, not yet implemented (see README roadmap):

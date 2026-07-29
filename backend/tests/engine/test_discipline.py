@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from factories import build_team
 
+from app.engine.auto_substitution import MAX_SUBSTITUTIONS
 from app.engine.events import EventType, MatchEvent
 from app.engine.match import Match
 from app.engine.match_simulator import MatchSimulator
@@ -109,6 +110,10 @@ def test_second_yellow_becomes_a_red_card():
 
 
 def test_a_sent_off_or_injured_player_never_appears_again_in_that_match():
+    """A red card always ends a player's match; an injury usually does too
+    unless AutoSubstitution brings on a replacement (engine/CLAUDE.md §8),
+    in which case the SUBSTITUTION event legitimately names them one more
+    time as the player going off — that's the one exception checked for."""
     home = build_team("home", "Home", overall=60)
     away = build_team("away", "Away", overall=60)
     simulator = MatchSimulator()
@@ -125,8 +130,63 @@ def test_a_sent_off_or_injured_player_never_appears_again_in_that_match():
                 removed_at[event.player_ids[0]] = i
 
         for player_id, index in removed_at.items():
-            later_events = events[index + 1:]
+            later_events = [e for e in events[index + 1:] if e.type != EventType.SUBSTITUTION]
             assert all(player_id not in e.player_ids for e in later_events)
             checked_at_least_one = True
 
     assert checked_at_least_one
+
+
+def test_both_injury_and_tiredness_triggered_substitutions_occur():
+    home = build_team("home", "Home", overall=60)
+    away = build_team("away", "Away", overall=60)
+    simulator = MatchSimulator()
+
+    reasons: dict[str, int] = {}
+    for seed in range(N):
+        events = simulator.simulate(home, away, seed=seed)
+        for sub_event in _of_type(events, EventType.SUBSTITUTION):
+            reason = sub_event.payload["reason"]
+            reasons[reason] = reasons.get(reason, 0) + 1
+
+    assert reasons.get("injury", 0) > 0
+    assert reasons.get("tiredness", 0) > 0
+
+
+def test_a_red_card_never_triggers_an_automatic_substitution():
+    """Real football doesn't let you replace a sent-off player — nothing
+    in AutoSubstitution reacts to a CARD event, only INJURY (and fatigue,
+    unrelated to cards), so a red-carded player must never show up as the
+    outgoing player of any later substitution."""
+    home = build_team("home", "Home", overall=60)
+    away = build_team("away", "Away", overall=60)
+    simulator = MatchSimulator()
+
+    found_a_red_card = False
+
+    for seed in range(N):
+        events = simulator.simulate(home, away, seed=seed)
+        for i, event in enumerate(events):
+            if event.type != EventType.CARD or event.payload.get("color") != "red":
+                continue
+            found_a_red_card = True
+            sent_off_player = event.player_ids[0]
+            later_subs = _of_type(events[i + 1 :], EventType.SUBSTITUTION)
+            assert all(sub.player_ids[0] != sent_off_player for sub in later_subs)
+
+    assert found_a_red_card
+
+
+def test_substitution_limit_is_never_exceeded():
+    home = build_team("home", "Home", overall=60)
+    away = build_team("away", "Away", overall=60)
+    simulator = MatchSimulator()
+
+    for seed in range(N):
+        events = simulator.simulate(home, away, seed=seed)
+        for team_id in (home.id, away.id):
+            auto_subs = [
+                e for e in _of_type(events, EventType.SUBSTITUTION)
+                if e.team_id == team_id and e.payload.get("reason") in ("injury", "tiredness")
+            ]
+            assert len(auto_subs) <= MAX_SUBSTITUTIONS

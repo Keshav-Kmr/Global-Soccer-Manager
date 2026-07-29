@@ -96,16 +96,18 @@ feed from a script, no API or UI involved yet.
 - [x] Fouls, cards, injuries (a foul is a free kick — the attacking team
       keeps the ball, not a turnover; second yellow becomes red; red
       cards/injuries take a player out for the rest of the match)
-- [ ] AI-driven automatic substitutions (tiredness/injury-triggered — the
-      manual mechanism already exists)
-- [ ] Commentary generation (template banks) — engine currently emits raw
-      structured events, not narrated text
+- [x] AI-driven automatic substitutions (injury always tries a like-for-like
+      bench player; tiredness subs off the single most fatigued eligible
+      starter; both respect a 5-substitution limit; never triggered by a
+      red card, matching real football)
+- [x] Commentary generation (template banks, attribute-flavored phrasing
+      for progression events) — `scripts/menu.py` narrates full matches now
 - [x] Statistical/balance test suite (now also covering brilliance, home
-      advantage, weather, and mid-match control)
-- [x] **Milestone:** simulate a match from the command line and read the
-      raw event feed end to end (`python backend/scripts/simulate_demo.py`,
-      or `python backend/scripts/menu.py` for an interactive picker with
-      live tactic-change/substitution demos)
+      advantage, weather, mid-match control, fouls/cards/injuries, and
+      commentary)
+- [x] **Milestone:** simulate a match from the command line and read a
+      narrated commentary feed end to end (`python backend/scripts/menu.py`,
+      or `python backend/scripts/simulate_demo.py` for the raw event feed)
 - [ ] CI basics
 
 Calibration note: a possession chain requires winning several *sequential*

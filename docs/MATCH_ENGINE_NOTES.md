@@ -67,21 +67,25 @@ Global-Soccer-Manager/
 │   │   │   ├── card.py             # CardCheck — jaune/rouge
 │   │   │   ├── injury.py           # InjuryCheck — blessure
 │   │   │   ├── match_situation.py  # MatchSituation (domicile/météo/arbitre, groupés)
+│   │   │   ├── auto_substitution.py# AutoSubstitution — remplacements auto (blessure/fatigue)
 │   │   │   ├── possession_chain.py # PossessionChainEngine — assemble tout
 │   │   │   ├── match.py            # Match — objet stateful, pilotable en direct
 │   │   │   ├── match_simulator.py  # MatchSimulator — wrapper "simule d'un coup"
-│   │   │   │   └── rating/
+│   │   │   └── rating/
 │   │   │       ├── CLAUDE.md       # doc de référence de la couche rating
 │   │   │       ├── tables.py       # poids par phase/attribut — EN DONNÉES
 │   │   │       ├── calculator.py   # PhaseRatingCalculator
 │   │   │       └── selector.py     # ProtagonistSelector
-│   │   ├── commentary/CLAUDE.md    # doc (pas encore codé)
+│   │   ├── commentary/
+│   │   │   ├── CLAUDE.md           # doc de référence de la couche commentaire
+│   │   │   ├── templates.py        # banques de textes — EN DONNÉES
+│   │   │   └── generator.py        # CommentaryGenerator
 │   │   └── delivery/CLAUDE.md      # doc (pas encore codé — API/WebSocket)
 │   ├── scripts/
 │   │   ├── _teams.py               # make_player()/build_team() partagés
 │   │   ├── simulate_demo.py        # un scénario simple, non-interactif
-│   │   └── menu.py                 # MENU INTERACTIF — 6 scénarios au choix
-│   └── tests/                      # 36 tests, tous verts
+│   │   └── menu.py                 # MENU INTERACTIF — 6 scénarios, narré en direct
+│   └── tests/                      # 52 tests, tous verts
 └── frontend/CLAUDE.md              # pas commencé
 ```
 
@@ -231,7 +235,37 @@ un bug.
 
 ---
 
-## 7. Contrôle en direct : `Match` — la pièce la plus importante côté architecture
+## 7. Commentaire narratif
+
+`app/commentary/` transforme un `MatchEvent` brut en phrase — c'est ce qui
+répond à la toute première demande du projet ("il tire... BUT !" plutôt
+qu'un JSON illisible). Volontairement séparé du moteur : le moteur ne
+formate jamais de texte, le commentaire ne décide jamais d'un résultat.
+
+- **`templates.py`** : des banques de phrases par type d'événement (données,
+  pas de code). Une phrase est choisie au hasard dans la banque à chaque
+  fois pour éviter la répétition.
+- **`POSSESSION_PROGRESS` a un traitement spécial** : la banque choisie
+  dépend de l'attribut dominant du protagoniste (pace/dribbling/vision), et
+  seulement si cet attribut dépasse 70/99 — sinon phrase générique. Un
+  joueur rapide "explose" ou "part en pointe", un dribbleur "élimine",
+  personne ne parle de vitesse pour un joueur moyen.
+- **`CommentaryGenerator.describe(event, roster, rng)`** : `roster` est un
+  dict `id joueur -> Player` (les `MatchEvent` ne contiennent que des ids,
+  jamais les objets joueurs complets — le commentaire est ce qui les
+  résout en noms).
+- **Déterminisme** : narrer tout un match d'un coup (comme le fait
+  `menu.py`) se fait *après* que le RNG interne du moteur a déjà servi pour
+  toute la simulation — donc on utilise un second `random.Random(seed)`
+  avec le **même seed**, ce qui donne un texte tout aussi reproductible
+  sans réutiliser la même instance.
+
+`scripts/menu.py` utilise maintenant vraiment ce système (avant, il avait
+son propre formateur jetable en attendant que ce module existe).
+
+---
+
+## 8. Contrôle en direct : `Match` — la pièce la plus importante côté architecture
 
 `Match` (dans `match.py`) est un objet *stateful*, pas une fonction qui
 tourne d'un coup. Il expose :
@@ -258,11 +292,50 @@ en entrée et ignoré.
 
 ---
 
-## 8. Comment tester toi-même
+## 9. Remplacements automatiques
+
+`AutoSubstitution` (`engine/auto_substitution.py`) tourne après chaque
+séquence, pour les deux équipes. Deux déclencheurs, bien distincts de
+`Match.substitute()` (le contrôle manuel du §8, sans limite ni gestion de
+banc) :
+
+1. **Blessure** : dès qu'un joueur est blessé, tente immédiatement de faire
+   entrer un remplaçant du **même poste** depuis le banc.
+2. **Fatigue** : quand la forme d'un titulaire passe sous 0.72 (calibré
+   empiriquement — même le joueur le plus sollicité descend rarement sous
+   ~0.53 sur 90 minutes avec le taux de fatigue actuel), le titulaire le
+   plus fatigué est remplacé s'il y a un joueur du même poste disponible.
+   Un seul joueur par vérification, pas toute l'équipe d'un coup.
+
+**Règle importante** : un carton rouge ne déclenche **jamais** de
+remplacement automatique (en vrai foot, on ne remplace pas un joueur
+expulsé — l'équipe joue à 10). Prouvé par test.
+
+Les deux respectent une limite de 5 remplacements par équipe
+(`Team.substitutions_used`), gérée uniquement par `AutoSubstitution` (pas
+par `Match.substitute()`, qui reste un outil bas niveau sans limite).
+
+⚠️ Pour que ça marche, il fallait un vrai banc de touche dans les équipes
+de test/démo (`_teams.py`, `factories.py` génèrent maintenant 5 remplaçants
+par équipe) — sinon `AutoSubstitution` n'a jamais personne à faire entrer.
+
+**Bug (encore) rencontré et corrigé** : remplacer un joueur modifie
+vraiment `starting_xi`/`bench` — mais comme les tests statistiques
+réutilisent les mêmes objets `Team` sur des centaines de matchs, un
+remplacement fait dans un match "contaminait" le suivant (composition
+d'équipe différente → résultats différents → tests de reproductibilité
+cassés). Solution : `Team` capture maintenant une copie de sa composition
+d'origine à la construction, que `Match` restaure au coup d'envoi de
+**chaque** nouveau match — le même principe que la remise à zéro de
+`fitness`, appliqué cette fois à la composition de l'équipe elle-même.
+
+---
+
+## 10. Comment tester toi-même
 
 ```bash
 cd backend
-python3 -m pytest -q              # les 36 tests (unitaires + statistiques)
+python3 -m pytest -q              # les 52 tests (unitaires + statistiques)
 python3 scripts/simulate_demo.py  # un scénario fixe, feed brut d'événements
 python3 scripts/menu.py           # MENU INTERACTIF, 6 scénarios :
 ```
@@ -282,12 +355,10 @@ précis via `make_player(..., shooting=95, pace=90, ...)`.
 
 ---
 
-## 9. Ce qui reste à faire (court terme)
+## 11. Ce qui reste à faire (court terme)
 
-- Remplacements automatiques pilotés par l'IA (fatigue/blessure) — le
-  mécanisme manuel existe déjà via `Match.substitute()`
-- Génération de commentaire narratif (texte à partir des `MatchEvent` —
-  actuellement le moteur ne sort que des événements structurés bruts)
+- Étendre le commentaire "flavoré par attribut" (§7) à d'autres types
+  d'événements que `POSSESSION_PROGRESS` (tir, faute...)
 - Brancher `width` et `marking_scheme` dans `TacticalMatchup`
 - Hors-jeu, corners/coups francs comme séquences à part entière (pour
   l'instant une faute redémarre juste une chaîne normale)
@@ -296,7 +367,7 @@ précis via `make_player(..., shooting=95, pace=90, ...)`.
 
 ---
 
-## 10. Où trouver le détail technique précis
+## 12. Où trouver le détail technique précis
 
 Ce fichier est un résumé pour se rappeler la vue d'ensemble. Pour le détail
 exact destiné à coder (formules complètes, tables de poids, taxonomie
@@ -305,5 +376,6 @@ d'événements) :
 - [`CLAUDE.md`](../CLAUDE.md) — vision globale, conventions
 - [`backend/CLAUDE.md`](../backend/CLAUDE.md) — conventions de code backend
 - [`backend/app/engine/CLAUDE.md`](../backend/app/engine/CLAUDE.md) — **le doc de référence du moteur**
+- [`backend/app/commentary/CLAUDE.md`](../backend/app/commentary/CLAUDE.md) — la couche commentaire
 - [`backend/app/engine/rating/CLAUDE.md`](../backend/app/engine/rating/CLAUDE.md) — la couche stats → notes
 - [`README.md`](../README.md) — roadmap complète (10 phases)

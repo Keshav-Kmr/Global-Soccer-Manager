@@ -22,6 +22,7 @@ from app.domain.match_context import MatchContext
 from app.domain.player import Player
 from app.domain.tactic import Tactic
 from app.domain.team import Team
+from app.engine.auto_substitution import AutoSubstitution
 from app.engine.events import EventType, MatchEvent
 from app.engine.match_situation import MatchSituation
 from app.engine.possession_chain import ChainResult, PossessionChainEngine
@@ -43,16 +44,29 @@ class Match:
         seed: int,
         context: MatchContext | None = None,
     ) -> None:
-        # A fresh 90 minutes: reset fitness/cards so match-day state never
-        # leaks in from a previous Match sharing the same Team/Player
-        # objects (as the statistical tests and the demo scripts do).
-        for player in (*team_a.starting_xi, *team_b.starting_xi):
+        # A fresh 90 minutes: restore squad composition (undoing any
+        # substitution from a previous Match reusing these Team objects)
+        # and reset match-day player/team state, so nothing ever leaks in
+        # from a prior Match — see Team.__post_init__.
+        team_a.starting_xi = list(team_a._original_starting_xi)
+        team_a.bench = list(team_a._original_bench)
+        team_b.starting_xi = list(team_b._original_starting_xi)
+        team_b.bench = list(team_b._original_bench)
+        team_a.substitutions_used = 0
+        team_b.substitutions_used = 0
+
+        for player in (*team_a.starting_xi, *team_a.bench, *team_b.starting_xi, *team_b.bench):
             player.fitness = 1.0
             player.yellow_cards = 0
             player.available = True
 
         self.team_a = team_a
         self.team_b = team_b
+        self._auto_substitution = AutoSubstitution()
+        # Kept around so a caller can narrate the finished event list in a
+        # second pass with a reproducible commentary RNG — see
+        # app/commentary/generator.py's module docstring.
+        self.seed = seed
         self.minute = 0
         self.events: list[MatchEvent] = [MatchEvent(minute=0, type=EventType.KICKOFF, team_id=team_a.id)]
 
@@ -79,6 +93,7 @@ class Match:
         self.minute += MINUTES_PER_CHAIN
         result = self._chain_engine.run(self.minute, self._possession, self._other, self._rng, self._situation)
         self.events.extend(result.events)
+        self._handle_auto_substitutions(result)
 
         # A foul means the attacking team keeps the ball via the free kick
         # rather than conceding possession like a clean turnover would.
@@ -89,6 +104,23 @@ class Match:
             self.events.append(MatchEvent(minute=MATCH_MINUTES, type=EventType.FULL_TIME, team_id=None))
 
         return result
+
+    def _handle_auto_substitutions(self, result: ChainResult) -> None:
+        """Injury-triggered subs react to this chain's events; tiredness-
+        triggered subs are checked for both teams regardless, since fatigue
+        accumulates gradually rather than as a discrete event. See
+        engine/auto_substitution.py and engine/CLAUDE.md §8."""
+        for team in (self.team_a, self.team_b):
+            for event in result.events:
+                if event.type == EventType.INJURY and event.team_id == team.id:
+                    injured_player = next(p for p in team.starting_xi if p.id == event.player_ids[0])
+                    sub_event = self._auto_substitution.substitute_for_injury(team, self.minute, injured_player)
+                    if sub_event is not None:
+                        self.events.append(sub_event)
+
+            sub_event = self._auto_substitution.substitute_for_tiredness(team, self.minute)
+            if sub_event is not None:
+                self.events.append(sub_event)
 
     def play_to_completion(self) -> list[MatchEvent]:
         while not self.finished:
@@ -121,5 +153,6 @@ class Match:
                 type=EventType.SUBSTITUTION,
                 team_id=team.id,
                 player_ids=[player_out.id, player_in.id],
+                payload={"reason": "manual"},
             )
         )
