@@ -31,6 +31,11 @@ class PlayerAttributes:
     The three goalkeeper-specific attributes default to the floor value and
     are simply never read for outfield players (only a GK is ever eligible
     on the defending side of a SHOT phase — see PHASE_ELIGIBLE_POSITIONS).
+
+    `flair` drives BrillianceCheck (engine/brilliance.py): a rare, discrete
+    chance of a standout individual moment, deliberately separate from the
+    smooth team/individual blend in PhaseRatingCalculator — see
+    engine/rating/CLAUDE.md §5.
     """
 
     pace: int
@@ -45,6 +50,7 @@ class PlayerAttributes:
     aggression: int
     composure: int
     stamina: int
+    flair: int
     reflexes: int = _ATTRIBUTE_MIN
     handling: int = _ATTRIBUTE_MIN
     gk_positioning: int = _ATTRIBUTE_MIN

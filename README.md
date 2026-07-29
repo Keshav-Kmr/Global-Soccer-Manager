@@ -44,8 +44,8 @@ balance so that none of them makes the others irrelevant:
 | Pillar | Role |
 |---|---|
 | **Player quality** | Individual attributes — pace, passing, shooting, tackling, and more — drive every duel on the pitch. |
-| **Tactics** | Mentality, tempo, pressing, width, defensive line, and marking scheme *structurally* change how a match unfolds, not just its odds. Two teams with identical players but opposed tactics should play visibly different matches. |
-| **Variance** | No duel is ever certain. Probabilities are always clamped away from 0% and 100%, and the dice still has to be rolled — upsets are a feature, not a bug. |
+| **Tactics** | Mentality, tempo, pressing, width, defensive line, and marking scheme *structurally* change how a match unfolds, not just its odds. Tactics and substitutions can be changed **mid-match** and take effect on the very next play — proven by statistical test, not just claimed. |
+| **Variance** | No duel is ever certain — probabilities are always clamped away from 0% and 100% — and rare, independent "moments of brilliance" mean even a modest player can occasionally produce a standout play. Home advantage and weather add further context on top. |
 
 ## Roadmap
 
@@ -87,12 +87,23 @@ feed from a script, no API or UI involved yet.
       tables)
 - [x] Possession-chain engine (phase transitions, contest resolution,
       fatigue, tactical matchup)
-- [ ] Fouls, cards, injuries, substitutions
+- [x] Moments of brilliance (rare, flair-driven individual spikes — not the
+      same thing as the smooth team/individual stat blend)
+- [x] Home advantage & weather as match-context modifiers
+- [x] Live mid-match tactic changes and substitutions (`Match` class),
+      proven by statistical test to measurably change outcomes — not just
+      accepted as input and ignored
+- [ ] Fouls, cards, injuries
+- [ ] AI-driven automatic substitutions (tiredness/injury-triggered — the
+      manual mechanism already exists)
 - [ ] Commentary generation (template banks) — engine currently emits raw
       structured events, not narrated text
-- [x] Statistical/balance test suite
+- [x] Statistical/balance test suite (now also covering brilliance, home
+      advantage, weather, and mid-match control)
 - [x] **Milestone:** simulate a match from the command line and read the
-      raw event feed end to end (`python backend/scripts/simulate_demo.py`)
+      raw event feed end to end (`python backend/scripts/simulate_demo.py`,
+      or `python backend/scripts/menu.py` for an interactive picker with
+      live tactic-change/substitution demos)
 - [ ] CI basics
 
 Calibration note: a possession chain requires winning several *sequential*
@@ -236,12 +247,14 @@ cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-pytest                        # unit + statistical balance tests
+pytest                       # unit + statistical balance tests
 python scripts/simulate_demo.py   # simulate one match, print its event feed
+python scripts/menu.py            # interactive scenario picker, incl. live
+                                   # mid-match tactic changes/substitutions
 ```
 
-Edit `scripts/simulate_demo.py` to try your own team stats/tactics and see
-how a match plays out.
+Edit `scripts/simulate_demo.py`, or add a scenario to `scripts/menu.py`, to
+try your own team stats/tactics and see how a match plays out.
 
 ## Documentation
 

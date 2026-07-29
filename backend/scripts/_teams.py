@@ -22,7 +22,7 @@ def make_player(player_id: str, name: str, position: Position, overall: int, **o
         pace=overall, dribbling=overall, passing=overall, vision=overall,
         shooting=overall, tackling=overall, marking=overall, strength=overall,
         positioning=overall, aggression=overall, composure=overall, stamina=overall,
-        reflexes=overall, handling=overall, gk_positioning=overall,
+        flair=overall, reflexes=overall, handling=overall, gk_positioning=overall,
     )
     attrs.update(overrides)
     return Player(id=player_id, name=name, position=position, attributes=PlayerAttributes(**attrs))

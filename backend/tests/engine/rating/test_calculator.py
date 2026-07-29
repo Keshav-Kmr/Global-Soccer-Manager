@@ -7,6 +7,7 @@ def _player(position: Position, **attrs) -> Player:
     defaults = dict(
         pace=1, dribbling=1, passing=1, vision=1, shooting=1, tackling=1,
         marking=1, strength=1, positioning=1, aggression=1, composure=1, stamina=1,
+        flair=1,
     )
     defaults.update(attrs)
     return Player(id="p", name="Test Player", position=position, attributes=PlayerAttributes(**defaults))

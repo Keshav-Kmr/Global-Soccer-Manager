@@ -49,6 +49,7 @@ Outfield:
 | Aggression    | More duels contested/won, but raises foul & card risk |
 | Composure     | Lowers foul/card risk under pressure, improves shot quality when rushed |
 | Stamina       | Rate of attribute decay over the 90 minutes |
+| Flair         | Drives BrillianceCheck (§4.1): a rare, independent chance of a standout individual moment |
 
 Goalkeeper-specific (replace outfield shot-relevant attributes):
 
@@ -146,6 +147,40 @@ that's what keeps rebalancing and adding attributes/phases later cheap.
   exactly the kind of upset an open-source football sim should be able to
   produce.
 
+## 4.1 Moments of brilliance
+
+The team/individual blend in §4 (and `engine/rating/CLAUDE.md` §3) is a
+smooth, continuous statistical tilt — a better player does a *bit* better,
+consistently. That's not the same thing as "a flash of genius," which is a
+rare, discrete spike, not a permanent tilt. `BrillianceCheck`
+(`engine/brilliance.py`) is a separate, independent roll per contest: scaled
+by the attacking protagonist's Flair, capped low (a few percent at most —
+if it stops being rare it stops reading as brilliance), and when it hits, it
+multiplies that player's individual contribution for that one contest only
+before the blend/matchup/fatigue chain runs. This was exactly the kind of
+addition `engine/rating/CLAUDE.md` §5 flagged as a future extension point —
+it didn't require touching `PhaseRatingCalculator`, `ProbabilityModel`, or
+the phase state machine.
+
+## 4.2 Match context: home advantage & weather
+
+Two more multipliers applied alongside the tactical-matchup modifier in §2,
+but conceptually distinct from it because they aren't about either team's
+choices:
+
+- **Home advantage** (`engine/home_advantage.py`): a small flat bonus
+  (v1: a single constant) for whichever team is playing at home — currently
+  just "whichever team is passed first to `Match`," not a separate flag.
+- **Weather** (`engine/weather_modifiers.py`, `domain/match_context.py`):
+  match-wide conditions — Rain penalizes the progression phases (harder
+  passing/dribbling on a slick pitch); Wind penalizes the shot phase only.
+  Applies identically regardless of which team is attacking, unlike
+  `TacticalMatchup`, which is asymmetric between the two teams' tactics.
+
+Both are deliberately simple starting points (flat constants), not a full
+simulation of crowd noise or rain intensity — plausible refinements of
+these same two classes later, not new systems.
+
 ## 5. Match loop / possession chain state machine
 
 ```
@@ -205,14 +240,19 @@ not a separate simulation system.
 
 ## 8. Substitutions
 
-MVP: AI-driven, no human-in-the-loop mid-match decisions yet.
+Live, human-in-the-loop substitutions exist now via `Match.substitute()`
+(§11) — a caller can swap a starting player for any other `Player` between
+possession chains and it takes effect on the very next one. What's still
+missing is the *automatic* side:
 
 - Tiredness-triggered: once a player's fatigue factor crosses a threshold
   (roughly minute 60-75 depending on Stamina), sub in a bench player of the
   same position if one is available.
 - Injury-triggered: immediate, same-position bench player if available.
-- Tactical subs (chasing/protecting a scoreline) are a future extension, not
-  MVP.
+
+`Match.substitute()` also doesn't manage bench bookkeeping (removing the
+incoming player from `Team.bench`, enforcing a substitution limit) — that's
+squad-management scope (README roadmap Phase 5), not the match engine's.
 
 ## 9. Tuning constants
 
@@ -225,34 +265,65 @@ balancing passes are tractable.
 
 ## 10. MatchEvent taxonomy
 
+Implemented today:
+
 | Event type | Key payload |
 |---|---|
 | KICKOFF | team with first possession |
-| POSSESSION_PROGRESS | phase (build_up/midfield/final_third), team, key player(s) |
-| CHANCE_CREATED | team, creator player, zone |
-| SHOT | shooter, assist (optional), shot quality tier |
-| GOAL | scorer, assist (optional), current score |
-| SAVE | goalkeeper, shooter, rebound: bool |
-| BLOCK | blocker, shooter |
+| POSSESSION_PROGRESS | phase (build_up/midfield/final_third), team, key player |
+| TURNOVER | phase, team that lost possession, player |
+| MOMENT_OF_BRILLIANCE | team, player (§4.1) |
+| SHOT | shooter |
+| GOAL | scorer |
+| SAVE | shooter, goalkeeper |
+| BLOCK | shooter |
 | OFF_TARGET | shooter |
+| TACTIC_CHANGE | team, new mentality/pressing (§11) |
+| SUBSTITUTION | player_out, player_in (§11) |
+| FULL_TIME | — |
+
+Planned, not yet implemented (see README roadmap):
+
+| Event type | Key payload |
+|---|---|
+| CHANCE_CREATED | team, creator player, zone |
 | CORNER / THROW_IN / GOAL_KICK / FREE_KICK | team, zone |
 | OFFSIDE | player |
 | FOUL | fouling player, fouled player, zone |
 | CARD | player, yellow/red, reason (foul reference) |
 | INJURY | player |
-| SUBSTITUTION | player_out, player_in, reason (tired/injury) |
-| HALF_TIME / FULL_TIME | current score, aggregate stats |
+| HALF_TIME | current score, aggregate stats |
 
 Every event carries: `minute`, `team` (nullable for neutral events), and a
 list of `players` involved. Commentary text is **not** stored on the event
 itself — see `app/commentary/CLAUDE.md` for why that's a separate layer.
 
+## 11. Live match control: tactic changes and substitutions mid-match
+
+`Match` (`engine/match.py`) is the stateful primitive behind
+`MatchSimulator.simulate()` — it exposes `play_next_chain()` to advance one
+possession chain at a time, plus `change_tactic(team, tactic)` and
+`substitute(team, player_out, player_in)` to be called *between* chains.
+Both take effect immediately, with no special plumbing: `PossessionChainEngine`
+always reads `team.tactic` and `team.starting_xi` live off the `Team`
+object it's given, never a snapshot taken at kickoff, so mutating those
+objects between `play_next_chain()` calls is the entire mechanism. This is
+what makes tactics genuinely central rather than a match-start-only
+setting — see `tests/engine/test_match.py` for statistical proof that a
+mid-match tactical switch and a mid-match substitution each measurably
+change what happens afterward.
+
+`MatchSimulator.simulate()` still exists as a thin convenience wrapper
+(`Match(...).play_to_completion()`) for the common case where nothing needs
+to change mid-match — existing callers are unaffected.
+
 ## Explicitly out of scope for MVP
 
 - Player heat-maps / positional coordinates.
 - xG-style advanced stats display.
-- Mid-match human tactical changes streamed back into a running simulation.
-- Morale, weather, pitch condition, referee personality profiles beyond the
-  single per-match strictness modifier in §6.
+- Morale, pitch condition, referee personality profiles beyond the single
+  per-match strictness modifier in §6.
+- AI-driven automatic substitutions (tiredness/injury-triggered) — the
+  mechanism exists (§8, §11) but nothing calls it automatically yet.
 - Anything related to persistence — the engine just yields events; what
   happens to them after is `delivery/`'s problem.

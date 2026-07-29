@@ -105,12 +105,16 @@ extensibility decision in the whole engine:
 Called out explicitly so a future contributor knows where to add these
 without having to redesign the rating layer:
 
-- **Context modifiers** (morale, home advantage, rivalry, weather): the
-  natural seam is a `modifiers: list[RatingModifier]` parameter on
-  `PhaseRatingCalculator.rate()`, applied multiplicatively after the weighted
-  average. Don't add this now — there's nothing to modify yet — but don't
-  design `rate()`'s signature in a way that would make bolting this on later
-  awkward either.
+- **Context modifiers** (morale, rivalry, and — since built — home advantage
+  and weather): home advantage and weather ended up implemented as their
+  own small classes (`engine/home_advantage.py`, `engine/weather_modifiers.py`)
+  applied in `possession_chain.py` alongside `TacticalMatchup`, rather than
+  as a `modifiers` parameter threaded through `PhaseRatingCalculator.rate()`
+  itself — they're about match/team context, not about how attributes turn
+  into a rating, so they compose better as sibling multipliers than as
+  something `PhaseRatingCalculator` has to know about. Follow the same
+  pattern for morale/rivalry later: a small standalone class, not a growing
+  parameter list on `rate()`.
 - **Chemistry between specific players** (e.g. two wingers who've played
   together for seasons): would plug in as an additional multiplier on the
   `individual` term in §3, keyed on which players are actually selected as
