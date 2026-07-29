@@ -63,10 +63,14 @@ Global-Soccer-Manager/
 │   │   │   ├── brilliance.py       # BrillianceCheck — éclair de génie
 │   │   │   ├── home_advantage.py   # HomeAdvantage
 │   │   │   ├── weather_modifiers.py# WeatherModifiers
+│   │   │   ├── foul.py             # FoulCheck — faute ou tacle propre ?
+│   │   │   ├── card.py             # CardCheck — jaune/rouge
+│   │   │   ├── injury.py           # InjuryCheck — blessure
+│   │   │   ├── match_situation.py  # MatchSituation (domicile/météo/arbitre, groupés)
 │   │   │   ├── possession_chain.py # PossessionChainEngine — assemble tout
 │   │   │   ├── match.py            # Match — objet stateful, pilotable en direct
 │   │   │   ├── match_simulator.py  # MatchSimulator — wrapper "simule d'un coup"
-│   │   │   └── rating/
+│   │   │   │   └── rating/
 │   │   │       ├── CLAUDE.md       # doc de référence de la couche rating
 │   │   │       ├── tables.py       # poids par phase/attribut — EN DONNÉES
 │   │   │       ├── calculator.py   # PhaseRatingCalculator
@@ -77,7 +81,7 @@ Global-Soccer-Manager/
 │   │   ├── _teams.py               # make_player()/build_team() partagés
 │   │   ├── simulate_demo.py        # un scénario simple, non-interactif
 │   │   └── menu.py                 # MENU INTERACTIF — 6 scénarios au choix
-│   └── tests/                      # 23 tests, tous verts
+│   └── tests/                      # 36 tests, tous verts
 └── frontend/CLAUDE.md              # pas commencé
 ```
 
@@ -180,13 +184,54 @@ RESTART → BUILD_UP → MIDFIELD → FINAL_THIRD → SHOT → GOAL / SAVE / BLO
 ```
 
 Chaque flèche "succès" est un duel résolu via le pipeline du §4. Un
-turnover à n'importe quelle phase arrête la chaîne immédiatement. **Pas
-encore implémenté** : fautes, cartons, blessures, hors-jeu, corners/coups
-francs comme événements à part entière (ils sont dans la roadmap).
+turnover à n'importe quelle phase arrête la chaîne — **sauf si c'est une
+faute** (§6 ci-dessous), auquel cas l'équipe qui attaquait garde le ballon.
+**Pas encore implémenté** : hors-jeu, corners/coups francs comme séquences
+à part entière (ils sont dans la roadmap).
 
 ---
 
-## 6. Contrôle en direct : `Match` — la pièce la plus importante côté architecture
+## 6. Fautes, cartons, blessures
+
+Ne se déclenche que quand l'attaquant **perd** un duel de progression
+(BUILD_UP/MIDFIELD/FINAL_THIRD) — jamais sur le tir (un penalty est un
+mécanisme à part, pas encore fait).
+
+1. **`FoulCheck`** : 25% des duels perdus sont en fait une faute (pas un
+   tacle propre). Sévérité = agressivité du tacleur − dribble du porteur de
+   balle, plancher à 0, multipliée par zone (FINAL_THIRD plus sévère que
+   BUILD_UP — arrêter une attaque avancée est plus "cynique").
+2. **Conséquence mécanique clé** : une faute = coup franc, **pas un
+   turnover** — l'équipe qui attaquait garde la balle pour la séquence
+   suivante (`ChainResult.possession_retained`). C'est ce qui rend une
+   faute vraiment différente d'un tacle propre, pas juste un habillage
+   textuel différent.
+3. **`CardCheck`** : `danger = sévérité × sévérité_arbitre`. La sévérité de
+   l'arbitre est tirée une seule fois par match (0.7 à 1.3, dans
+   `Match.__init__`) — certains matchs sont sifflés sévèrement, d'autres
+   laissent beaucoup jouer, ça fait partie du pilier chance. Un 2e carton
+   jaune pour le même joueur devient automatiquement un rouge.
+4. **`InjuryCheck`** : risque indépendant et rare, sur la victime de la
+   faute (le porteur de balle fauté) ou sur le tacleur lui-même en cas de
+   tacle propre mais engagé (une blessure sur un geste 100% légal, ça
+   arrive aussi en vrai).
+5. **Carton rouge ou blessure** → le joueur passe `available = False` (pas
+   une suppression physique de la liste des 11 !). Pourquoi : supprimer
+   vraiment de la liste aurait cassé les tests statistiques qui réutilisent
+   les mêmes objets `Team`/`Player` sur des centaines de matchs — exact
+   même type de bug que celui déjà rencontré avec `fitness`. `available`
+   est remis à `True` à chaque nouveau `Match`, comme `fitness` et
+   `yellow_cards`.
+
+⚠️ Détail piégeux si tu relis les événements bruts : pour `FOUL`/`CARD`,
+`team_id` désigne l'équipe **qui a commis la faute/le carton** — alors que
+pour `POSSESSION_PROGRESS`/`TURNOVER`, `team_id` désigne l'équipe qui
+**attaquait**. Deux conventions différentes selon le type d'événement, pas
+un bug.
+
+---
+
+## 7. Contrôle en direct : `Match` — la pièce la plus importante côté architecture
 
 `Match` (dans `match.py`) est un objet *stateful*, pas une fonction qui
 tourne d'un coup. Il expose :
@@ -213,11 +258,11 @@ en entrée et ignoré.
 
 ---
 
-## 7. Comment tester toi-même
+## 8. Comment tester toi-même
 
 ```bash
 cd backend
-python3 -m pytest -q              # les 23 tests (unitaires + statistiques)
+python3 -m pytest -q              # les 36 tests (unitaires + statistiques)
 python3 scripts/simulate_demo.py  # un scénario fixe, feed brut d'événements
 python3 scripts/menu.py           # MENU INTERACTIF, 6 scénarios :
 ```
@@ -237,20 +282,21 @@ précis via `make_player(..., shooting=95, pace=90, ...)`.
 
 ---
 
-## 8. Ce qui reste à faire (court terme)
+## 9. Ce qui reste à faire (court terme)
 
-- Fautes, cartons, blessures (mécanique de faute + carton + blessure)
 - Remplacements automatiques pilotés par l'IA (fatigue/blessure) — le
   mécanisme manuel existe déjà via `Match.substitute()`
 - Génération de commentaire narratif (texte à partir des `MatchEvent` —
   actuellement le moteur ne sort que des événements structurés bruts)
 - Brancher `width` et `marking_scheme` dans `TacticalMatchup`
+- Hors-jeu, corners/coups francs comme séquences à part entière (pour
+  l'instant une faute redémarre juste une chaîne normale)
 - Après ça : API/WebSocket (Phase 2), persistance (Phase 3), frontend
   (Phase 4)... voir la roadmap complète dans `README.md`
 
 ---
 
-## 9. Où trouver le détail technique précis
+## 10. Où trouver le détail technique précis
 
 Ce fichier est un résumé pour se rappeler la vue d'ensemble. Pour le détail
 exact destiné à coder (formules complètes, tables de poids, taxonomie

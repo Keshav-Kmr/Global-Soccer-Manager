@@ -93,7 +93,9 @@ feed from a script, no API or UI involved yet.
 - [x] Live mid-match tactic changes and substitutions (`Match` class),
       proven by statistical test to measurably change outcomes — not just
       accepted as input and ignored
-- [ ] Fouls, cards, injuries
+- [x] Fouls, cards, injuries (a foul is a free kick — the attacking team
+      keeps the ball, not a turnover; second yellow becomes red; red
+      cards/injuries take a player out for the rest of the match)
 - [ ] AI-driven automatic substitutions (tiredness/injury-triggered — the
       manual mechanism already exists)
 - [ ] Commentary generation (template banks) — engine currently emits raw

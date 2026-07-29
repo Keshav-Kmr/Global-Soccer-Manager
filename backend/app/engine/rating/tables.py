@@ -59,9 +59,18 @@ BLEND = 0.7
 
 
 def eligible_players(phase: Phase, players: list[Player], side: str) -> list[Player]:
-    """Players occupying a position eligible for this phase/side, falling
-    back to the whole squad if an unusual formation has no specialist on
-    the pitch for it."""
+    """Available players occupying a position eligible for this phase/side.
+
+    Falls back to every available player (any position) if an unusual
+    formation has no specialist on the pitch for it, and further falls
+    back to the full squad if a red card/injury has left no one available
+    at all — this is also what keeps a team playing (short-handed) after
+    going down to 10 men, rather than crashing with an empty selection
+    pool. This is the single choke point PhaseRatingCalculator and
+    ProtagonistSelector both go through, so the `.available` filter here
+    covers both automatically.
+    """
+    available = [p for p in players if p.available] or list(players)
     positions = PHASE_ELIGIBLE_POSITIONS[phase][side]
-    matched = [p for p in players if p.position in positions]
-    return matched or players
+    matched = [p for p in available if p.position in positions]
+    return matched or available

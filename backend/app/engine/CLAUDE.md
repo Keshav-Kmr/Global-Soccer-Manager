@@ -218,17 +218,46 @@ the moment of the shot).
 
 ## 6. Fouls, cards, injuries
 
-- Foul severity is a contest between the tackler's Aggression and the ball
-  carrier's Dribbling, modified by zone (fouls in the defensive third that
-  stop a promising attack are treated as more severe).
-- Card sub-roll: severity + tackler's Aggression/Composure + a per-match
-  "referee strictness" modifier (a single random value drawn once per match
-  from a reasonable range, so some matches are just card-happy — this is
-  also part of the variance pillar) → no card / yellow / red. A second
-  yellow becomes a red and removes the player.
-- Injury: a small independent probability check on fouls and on
-  high-Aggression duels generally. An injured player must be substituted (or
-  the team plays a man down if no substitutions remain) — feeds §8.
+Rolled only when the attacker **loses** a progression phase (BUILD_UP,
+MIDFIELD, FINAL_THIRD) — a phase the attacker wins is clean possession
+play, not a physical duel worth checking. SHOT is excluded (a foul that
+stops a shot is a penalty, a distinct future mechanic, §7).
+
+- **FoulCheck** (`engine/foul.py`): 25% (`FOUL_CHANCE`) of lost duels turn
+  out to be a foul rather than a clean tackle. Severity = the tackler's
+  Aggression minus the ball carrier's Dribbling, floored at 0, scaled by a
+  zone multiplier — fouls in FINAL_THIRD read as more cynical/severe than
+  ones in BUILD_UP.
+- **Mechanically, a foul is a free kick, not a turnover**: the attacking
+  team keeps the ball for the next chain instead of conceding possession
+  (`ChainResult.possession_retained`, honored by `Match.play_next_chain()`).
+  A clean tackle still ends the chain with a normal TURNOVER, as before.
+- **CardCheck** (`engine/card.py`): `danger = severity * referee_strictness`
+  drives yellow/red probabilities. Referee strictness is a single value
+  drawn once per match (`Match.__init__`, range 0.7–1.3), so some matches
+  are just card-happy and others let a lot go — deliberately part of the
+  variance pillar (root CLAUDE.md), not noise to average away. A second
+  yellow for the same player converts that event into a red.
+- A CARD event's `team_id` is the **carded player's own team** — note this
+  differs from POSSESSION_PROGRESS/TURNOVER, where `team_id` is the
+  attacking team. FOUL events follow the same "whose event is this about"
+  convention as CARD (`team_id` = the team that committed the foul), so a
+  FOUL and the CARD that follows it always share the same `team_id`.
+- **InjuryCheck** (`engine/injury.py`): a small independent risk, checked
+  on whichever player was actually exposed to the physical duel — the
+  fouled ball carrier if it was a foul, or the tackler themselves on a hard
+  but clean challenge. Not derived from card severity: a legal, hard-fought
+  tackle can injure just as a cynical foul can.
+- **A red card or an injury sets `Player.available = False`** — excluded
+  from `eligible_players()` (`engine/rating/tables.py`) for the rest of the
+  match, so the team plays short-handed. This is deliberately a flag, not a
+  physical removal from `Team.starting_xi`: removing the player from the
+  list permanently would leak across independent `Match()` calls that
+  happen to share the same `Team`/`Player` objects (exactly the same class
+  of bug fixed earlier for `fitness` — see `Match.__init__`, which resets
+  `fitness`, `yellow_cards`, and `available` together at kickoff). A human
+  driving the match live can bring on a replacement via `Match.substitute()`
+  (§11); nothing does this automatically yet (§8).
 
 ## 7. Set pieces (v1, lightweight)
 
@@ -273,6 +302,9 @@ Implemented today:
 | POSSESSION_PROGRESS | phase (build_up/midfield/final_third), team, key player |
 | TURNOVER | phase, team that lost possession, player |
 | MOMENT_OF_BRILLIANCE | team, player (§4.1) |
+| FOUL | team that fouled, [tackler, ball_carrier], phase (§6) |
+| CARD | fouling player's team, player, color: yellow/red (§6) |
+| INJURY | injured player's team, player (§6) |
 | SHOT | shooter |
 | GOAL | scorer |
 | SAVE | shooter, goalkeeper |
@@ -289,9 +321,6 @@ Planned, not yet implemented (see README roadmap):
 | CHANCE_CREATED | team, creator player, zone |
 | CORNER / THROW_IN / GOAL_KICK / FREE_KICK | team, zone |
 | OFFSIDE | player |
-| FOUL | fouling player, fouled player, zone |
-| CARD | player, yellow/red, reason (foul reference) |
-| INJURY | player |
 | HALF_TIME | current score, aggregate stats |
 
 Every event carries: `minute`, `team` (nullable for neutral events), and a

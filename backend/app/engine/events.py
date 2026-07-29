@@ -2,9 +2,9 @@
 
 Delivery and commentary consume these; engine internals never format text
 (see app/commentary/CLAUDE.md on why that's a separate layer). This is a
-subset of the full taxonomy in engine/CLAUDE.md §10 — fouls, cards, and
-injuries arrive with the corresponding roadmap items, not in this first
-pass.
+subset of the full taxonomy in engine/CLAUDE.md §10 — offside, set pieces,
+and half-time arrive with the corresponding roadmap items, not in this
+first pass.
 """
 
 from dataclasses import dataclass, field
@@ -16,6 +16,9 @@ class EventType(str, Enum):
     POSSESSION_PROGRESS = "possession_progress"
     TURNOVER = "turnover"
     MOMENT_OF_BRILLIANCE = "moment_of_brilliance"
+    FOUL = "foul"
+    CARD = "card"
+    INJURY = "injury"
     SHOT = "shot"
     GOAL = "goal"
     SAVE = "save"

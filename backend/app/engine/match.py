@@ -23,10 +23,16 @@ from app.domain.player import Player
 from app.domain.tactic import Tactic
 from app.domain.team import Team
 from app.engine.events import EventType, MatchEvent
+from app.engine.match_situation import MatchSituation
 from app.engine.possession_chain import ChainResult, PossessionChainEngine
 
 MATCH_MINUTES = 90
 MINUTES_PER_CHAIN = 2
+
+# Range for the once-per-match referee strictness draw (engine/CLAUDE.md
+# §6) — a multiplier on foul severity when deciding cards. 1.0 is neutral;
+# below/above that, a match is lenient/card-happy respectively.
+_REFEREE_STRICTNESS_RANGE = (0.7, 1.3)
 
 
 class Match:
@@ -37,21 +43,27 @@ class Match:
         seed: int,
         context: MatchContext | None = None,
     ) -> None:
-        # A fresh 90 minutes: reset fitness so fatigue never leaks in from
-        # a previous Match sharing the same Team/Player objects.
+        # A fresh 90 minutes: reset fitness/cards so match-day state never
+        # leaks in from a previous Match sharing the same Team/Player
+        # objects (as the statistical tests and the demo scripts do).
         for player in (*team_a.starting_xi, *team_b.starting_xi):
             player.fitness = 1.0
+            player.yellow_cards = 0
+            player.available = True
 
         self.team_a = team_a
         self.team_b = team_b
-        self.home_team_id = team_a.id
-        self.context = context or MatchContext()
         self.minute = 0
         self.events: list[MatchEvent] = [MatchEvent(minute=0, type=EventType.KICKOFF, team_id=team_a.id)]
 
         self._rng = random.Random(seed)
         self._chain_engine = PossessionChainEngine()
         self._possession, self._other = team_a, team_b
+        self._situation = MatchSituation(
+            home_team_id=team_a.id,
+            context=context or MatchContext(),
+            referee_strictness=self._rng.uniform(*_REFEREE_STRICTNESS_RANGE),
+        )
 
     @property
     def finished(self) -> bool:
@@ -65,12 +77,13 @@ class Match:
             raise RuntimeError("match is already finished")
 
         self.minute += MINUTES_PER_CHAIN
-        result = self._chain_engine.run(
-            self.minute, self._possession, self._other, self._rng,
-            home_team_id=self.home_team_id, context=self.context,
-        )
+        result = self._chain_engine.run(self.minute, self._possession, self._other, self._rng, self._situation)
         self.events.extend(result.events)
-        self._possession, self._other = self._other, self._possession
+
+        # A foul means the attacking team keeps the ball via the free kick
+        # rather than conceding possession like a clean turnover would.
+        if not result.possession_retained:
+            self._possession, self._other = self._other, self._possession
 
         if self.finished:
             self.events.append(MatchEvent(minute=MATCH_MINUTES, type=EventType.FULL_TIME, team_id=None))

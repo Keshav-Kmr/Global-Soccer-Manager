@@ -74,6 +74,13 @@ class Player:
     position: Position
     attributes: PlayerAttributes
     fitness: float = 1.0
+    yellow_cards: int = 0
+    # False after a red card or injury (engine/CLAUDE.md §6) — excluded from
+    # eligible_players() (engine/rating/tables.py) for the rest of the match.
+    # Reset to True at the start of every Match, alongside fitness/
+    # yellow_cards, so red cards/injuries never persist across independent
+    # Match() calls sharing the same Player objects.
+    available: bool = True
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.fitness <= 1.0:

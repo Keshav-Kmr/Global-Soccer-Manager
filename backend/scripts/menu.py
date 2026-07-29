@@ -125,6 +125,9 @@ _EVENT_TEXT = {
     EventType.SAVE: "Saved! Kept out by the goalkeeper.",
     EventType.BLOCK: "Blocked before it reaches goal.",
     EventType.OFF_TARGET: "Off target — no danger.",
+    EventType.FOUL: "Foul by {team} — player {player} concedes it in the {phase} phase.",
+    EventType.CARD: "CARD ({color}) for {team} — player {player}.",
+    EventType.INJURY: "INJURY — {team}'s player {player} is down and can't continue.",
     EventType.TACTIC_CHANGE: "{team} change their tactics.",
     EventType.SUBSTITUTION: "{team} make a substitution.",
     EventType.FULL_TIME: "Full time.",
@@ -136,6 +139,7 @@ def _describe(event: MatchEvent) -> str:
     return template.format(
         team=event.team_id or "-",
         phase=event.payload.get("phase", ""),
+        color=event.payload.get("color", ""),
         player=event.player_ids[0] if event.player_ids else "?",
     )
 
@@ -151,6 +155,9 @@ def _print_stats(events: list[MatchEvent], home_id: str, away_id: str) -> None:
         ("Goals", EventType.GOAL),
         ("Moments of brilliance", EventType.MOMENT_OF_BRILLIANCE),
         ("Turnovers conceded", EventType.TURNOVER),
+        ("Fouls conceded", EventType.FOUL),
+        ("Cards", EventType.CARD),
+        ("Injuries", EventType.INJURY),
     ]:
         print(f"{label:<20}{count(event_type, home_id):>8}{count(event_type, away_id):>8}")
 
