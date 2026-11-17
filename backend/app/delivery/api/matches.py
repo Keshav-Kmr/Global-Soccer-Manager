@@ -15,9 +15,13 @@ from app.delivery.schemas import (
     MatchRunModeSchema,
     MatchStateSchema,
     MatchStatisticsSchema,
+    ReplayMatchRequest,
+    ReplayMatchResponse,
     RestoreSnapshotRequest,
     SnapshotResponse,
     SubstitutionRequest,
+    VerifyReplayResponse,
+    validate_match_lineups,
     _tactic_from_schema,
     context_from_request,
     team_from_schema,
@@ -64,6 +68,10 @@ async def create_match(
 ) -> CreateMatchResponse:
     team_a = team_from_schema(body.team_a)
     team_b = team_from_schema(body.team_b)
+    try:
+        validate_match_lineups(team_a, team_b)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     context = context_from_request(body)
     controlled = body.mode == MatchRunModeSchema.CONTROLLED
     match_id = await service.start_match(team_a, team_b, body.seed, context, controlled=controlled)
@@ -223,6 +231,30 @@ async def restore_match_snapshot(
         return {"ok": True}
     except (MatchNotFoundError, MatchFinishedError, InvalidMatchCommandError, ValueError) as exc:
         raise _http_error(exc) from exc
+
+
+@router.post("/matches/replay", response_model=ReplayMatchResponse)
+async def replay_match_headless(
+    body: ReplayMatchRequest, service: MatchService = Depends(get_match_service)
+) -> ReplayMatchResponse:
+    try:
+        result = service.replay_match(body)
+        return ReplayMatchResponse.model_validate(result)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/matches/{match_id}/replay", response_model=VerifyReplayResponse)
+async def verify_match_replay(
+    match_id: str,
+    body: ReplayMatchRequest,
+    service: MatchService = Depends(get_match_service),
+) -> VerifyReplayResponse:
+    try:
+        result = await service.verify_replay(match_id, body)
+        return VerifyReplayResponse.model_validate(result)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/matches/{match_id}/result", response_model=MatchResultSchema)

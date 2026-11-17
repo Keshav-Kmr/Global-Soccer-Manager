@@ -61,6 +61,12 @@ export function buildDemoTeam(teamId: string, name: string, overall = 62): TeamP
   };
 }
 
+export function pitchFromEvent(event: MatchWireEvent | undefined): import("../types").PitchSnapshot | null {
+  const pitch = event?.payload?.pitch;
+  if (pitch?.players) return pitch;
+  return null;
+}
+
 export async function createMatch(
   teamA: TeamPayload,
   teamB: TeamPayload,
@@ -92,8 +98,26 @@ export async function getMatchState(matchId: string): Promise<MatchState> {
   return request(`/matches/${matchId}`);
 }
 
-export async function getEvents(matchId: string): Promise<MatchWireEvent[]> {
-  return request(`/matches/${matchId}/events`);
+export async function getEvents(matchId: string, sinceIndex = 0): Promise<MatchWireEvent[]> {
+  const q = sinceIndex > 0 ? `?since_index=${sinceIndex}` : "";
+  return request(`/matches/${matchId}/events${q}`);
+}
+
+export async function getMatchResult(matchId: string): Promise<{
+  events: MatchWireEvent[];
+  score_a: number;
+  score_b: number;
+  seed: number;
+}> {
+  return request(`/matches/${matchId}/result`);
+}
+
+export async function listTeams(): Promise<TeamPayload[]> {
+  return request("/teams");
+}
+
+export async function saveTeam(team: TeamPayload): Promise<TeamPayload> {
+  return request("/teams", { method: "POST", body: JSON.stringify(team) });
 }
 
 export async function getStatistics(matchId: string): Promise<MatchStatistics> {
