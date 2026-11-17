@@ -13,6 +13,7 @@ several times already with shared mutable objects — see engine/CLAUDE.md
 on-disk URL for actual runs.
 """
 
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import StaticPool
@@ -29,11 +30,23 @@ def create_engine_and_session_factory(database_url: str = DEFAULT_DATABASE_URL):
     same in-memory database alive across the multiple connections
     SQLAlchemy opens per session — without it, each session would see a
     brand new, empty in-memory database."""
-    engine_kwargs = {"connect_args": {"check_same_thread": False}} if "sqlite" in database_url else {}
+    engine_kwargs: dict = {}
+    if "sqlite" in database_url:
+        engine_kwargs["connect_args"] = {"check_same_thread": False, "timeout": 30}
     if database_url.endswith(":memory:"):
         engine_kwargs["poolclass"] = StaticPool
 
     engine = create_async_engine(database_url, **engine_kwargs)
+
+    if "sqlite" in database_url:
+
+        @event.listens_for(engine.sync_engine, "connect")
+        def _sqlite_pragmas(dbapi_connection, _connection_record) -> None:
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA busy_timeout=30000")
+            cursor.close()
+
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     return engine, session_factory
 

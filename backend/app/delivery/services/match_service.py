@@ -23,7 +23,7 @@ from app.delivery.services.match_session import MatchRunMode, MatchSession
 from app.delivery.services.pacer import Pacer
 from app.engine.auto_substitution import MAX_SUBSTITUTIONS
 from app.engine.clock import MINUTES_PER_CHAIN
-from app.engine.events import MatchEvent
+from app.engine.events import KEY_EVENT_TYPES, EventType, MatchEvent
 from app.engine.match import Match
 from app.engine.match_replay import ReplayAction, run_replay
 from app.engine.match_snapshot import export_snapshot, restore_snapshot
@@ -189,26 +189,45 @@ class MatchService:
             raise MatchPausedError("match is paused")
 
         advanced = 0
+        max_chains = 500
+
+        async def step_chain() -> bool:
+            nonlocal advanced
+            if match.finished:
+                return False
+            match.play_next_chain()
+            advanced += 1
+            self._flush_new_events(session)
+            await asyncio.sleep(0)
+            return True
+
         if until_finished:
             while not match.finished:
-                match.play_next_chain()
-                advanced += 1
-                self._flush_new_events(session)
+                await step_chain()
         elif target_minute is not None:
-            advanced = match.play_to_minute(target_minute)
-            self._flush_new_events(session)
+            while not match.finished and match.minute < target_minute and advanced < max_chains:
+                await step_chain()
         elif next_key_event:
-            advanced = match.play_to_next_key_event()
-            self._flush_new_events(session)
+            while not match.finished and advanced < max_chains:
+                before = len(match.events)
+                if not await step_chain():
+                    break
+                found_key = False
+                for event in match.events[before:]:
+                    if event.type not in KEY_EVENT_TYPES:
+                        continue
+                    if event.type == EventType.CARD and event.payload.get("color") != "red":
+                        continue
+                    found_key = True
+                    break
+                if found_key or match.finished:
+                    break
         else:
             if steps < 1:
                 raise InvalidMatchCommandError("steps must be at least 1")
             for _ in range(steps):
-                if match.finished:
+                if not await step_chain():
                     break
-                match.play_next_chain()
-                advanced += 1
-                self._flush_new_events(session)
         if match.finished:
             await self._finalize(session)
 

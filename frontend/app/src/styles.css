@@ -504,6 +504,18 @@ select {
   }
 }
 
+.squad-hub__msg {
+  margin: 0.5rem 0 0;
+  font-size: 0.9rem;
+  color: #93c5fd;
+}
+
+.squad-hub__error {
+  margin: 0.5rem 0 0;
+  font-size: 0.9rem;
+  color: var(--danger);
+}
+
 .squad-hub__grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -6,20 +6,34 @@ import type {
 } from "../types";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
+const REQUEST_TIMEOUT_MS = 15_000;
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-  });
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`${response.status}: ${detail}`);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {}),
+      },
+    });
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(`${response.status}: ${detail}`);
+    }
+    return (await response.json()) as T;
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error(`Request timed out — is the API running at ${API_BASE}?`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
   }
-  return response.json() as Promise<T>;
 }
 
 const FORMATION_433 = ["GK", "CB", "CB", "FB", "FB", "DM", "CM", "CM", "W", "ST", "W"] as const;

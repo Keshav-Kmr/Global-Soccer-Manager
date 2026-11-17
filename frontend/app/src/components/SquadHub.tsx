@@ -21,20 +21,24 @@ function loadPresets(): Record<string, TeamPayload["tactic"]> {
 
 export function SquadHub({ home, away, onHomeChange, onAwayChange }: Props) {
   const [savedTeams, setSavedTeams] = useState<TeamPayload[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [listBusy, setListBusy] = useState(false);
+  const [seedBusy, setSeedBusy] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [editSide, setEditSide] = useState<"home" | "away">("home");
   const editTeam = editSide === "home" ? home : away;
 
   const refreshTeams = useCallback(async () => {
-    setLoading(true);
+    setListBusy(true);
+    setListError(null);
     try {
       const teams = await listTeams();
       setSavedTeams(teams);
-    } catch {
+    } catch (err) {
       setSavedTeams([]);
+      setListError(err instanceof Error ? err.message : "Could not load saved teams");
     } finally {
-      setLoading(false);
+      setListBusy(false);
     }
   }, []);
 
@@ -43,13 +47,21 @@ export function SquadHub({ home, away, onHomeChange, onAwayChange }: Props) {
   }, [refreshTeams]);
 
   const ensureDemoSquads = async () => {
-    const h = buildDemoTeam("club_phoenix", "FC Phoenix", 64);
-    const a = buildDemoTeam("club_united", "United City", 61);
-    await Promise.all([saveTeam(h), saveTeam(a)]);
-    onHomeChange(h);
-    onAwayChange(a);
-    setMessage("Demo squads saved to the database.");
-    await refreshTeams();
+    setSeedBusy(true);
+    setListError(null);
+    try {
+      const h = buildDemoTeam("club_phoenix", "FC Phoenix", 64);
+      const a = buildDemoTeam("club_united", "United City", 61);
+      await Promise.all([saveTeam(h), saveTeam(a)]);
+      onHomeChange(h);
+      onAwayChange(a);
+      setMessage("Demo squads saved to the database.");
+      await refreshTeams();
+    } catch (err) {
+      setListError(err instanceof Error ? err.message : "Could not seed demo clubs");
+    } finally {
+      setSeedBusy(false);
+    }
   };
 
   const applyTeam = (team: TeamPayload, side: "home" | "away") => {
@@ -88,14 +100,24 @@ export function SquadHub({ home, away, onHomeChange, onAwayChange }: Props) {
       <p className="panel__muted">Browse saved clubs, edit tactics, and load them into the next match.</p>
 
       <div className="squad-hub__actions">
-        <button type="button" className="btn btn--primary" disabled={loading} onClick={() => void ensureDemoSquads()}>
-          Seed demo clubs
+        <button
+          type="button"
+          className="btn btn--primary"
+          disabled={seedBusy}
+          onClick={() => void ensureDemoSquads()}
+        >
+          {seedBusy ? "Seeding…" : "Seed demo clubs"}
         </button>
-        <button type="button" className="btn" disabled={loading} onClick={() => void refreshTeams()}>
-          Refresh list
+        <button type="button" className="btn" disabled={listBusy} onClick={() => void refreshTeams()}>
+          {listBusy ? "Loading…" : "Refresh list"}
         </button>
       </div>
 
+      {listError && (
+        <p className="squad-hub__error" role="alert">
+          {listError}
+        </p>
+      )}
       {message && <p className="squad-hub__msg">{message}</p>}
 
       <div className="squad-hub__grid">
