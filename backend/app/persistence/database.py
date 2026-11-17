@@ -13,7 +13,7 @@ several times already with shared mutable objects — see engine/CLAUDE.md
 on-disk URL for actual runs.
 """
 
-from sqlalchemy import event
+from sqlalchemy import event, inspect, text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import StaticPool
@@ -54,3 +54,16 @@ def create_engine_and_session_factory(database_url: str = DEFAULT_DATABASE_URL):
 async def init_models(engine: AsyncEngine) -> None:
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
+
+        def _ensure_team_formation_column(sync_conn) -> None:
+            if "sqlite" not in str(engine.url):
+                return
+            if "teams" not in inspect(sync_conn).get_table_names():
+                return
+            columns = {c["name"] for c in inspect(sync_conn).get_columns("teams")}
+            if "formation" not in columns:
+                sync_conn.execute(
+                    text("ALTER TABLE teams ADD COLUMN formation VARCHAR(16) NOT NULL DEFAULT '4-3-3'")
+                )
+
+        await connection.run_sync(_ensure_team_formation_column)

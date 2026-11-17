@@ -75,6 +75,12 @@ class PitchModel:
         self.state.ball_carrier_id = None
         self.state.ball_x, self.state.ball_y = 50.0, 50.0
 
+    def place_ball(self, x: float, y: float, possession_team_id: str) -> None:
+        self.state.ball_x = max(0.0, min(100.0, x))
+        self.state.ball_y = max(0.0, min(100.0, y))
+        self.state.possession_team_id = possession_team_id
+        self.state.ball_carrier_id = None
+
     def after_chain(
         self,
         attacking: Team,

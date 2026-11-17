@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from app.domain.player import Player, PlayerAttributes, Position
+from app.domain.formation import Formation
 from app.domain.tactic import DefensiveLine, MarkingScheme, Mentality, Pressing, Tactic, Tempo, Width
 from app.domain.team import Team
 from app.persistence.models import PlayerModel, TeamModel
@@ -44,6 +45,7 @@ class SqlTeamRepository(TeamRepository):
             width=team.tactic.width.value,
             defensive_line=team.tactic.defensive_line.value,
             marking_scheme=team.tactic.marking_scheme.value,
+            formation=team.formation.value,
         )
         model.players = [
             *(self._player_to_model(p, is_bench=False) for p in team.starting_xi),
@@ -76,7 +78,19 @@ class SqlTeamRepository(TeamRepository):
             defensive_line=DefensiveLine(model.defensive_line),
             marking_scheme=MarkingScheme(model.marking_scheme),
         )
-        return Team(id=model.id, name=model.name, starting_xi=starting_xi, bench=bench, tactic=tactic)
+        formation_raw = getattr(model, "formation", None) or Formation.FOUR_THREE_THREE.value
+        try:
+            formation = Formation(formation_raw)
+        except ValueError:
+            formation = Formation.FOUR_THREE_THREE
+        return Team(
+            id=model.id,
+            name=model.name,
+            starting_xi=starting_xi,
+            bench=bench,
+            tactic=tactic,
+            formation=formation,
+        )
 
     def _player_to_domain(self, model: PlayerModel) -> Player:
         return Player(

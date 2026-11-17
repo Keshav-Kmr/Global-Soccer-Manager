@@ -60,6 +60,10 @@ _SAMPLE_EVENTS = {
     EventType.HALF_TIME: MatchEvent(minute=47, type=EventType.HALF_TIME, team_id=None),
     EventType.FULL_TIME: MatchEvent(minute=92, type=EventType.FULL_TIME, team_id=None),
     EventType.OFFSIDE: MatchEvent(minute=28, type=EventType.OFFSIDE, team_id="home", player_ids=["pacey"]),
+    EventType.FREE_KICK: MatchEvent(minute=29, type=EventType.FREE_KICK, team_id="home", payload={"direct": True}),
+    EventType.GOAL_KICK: MatchEvent(minute=30, type=EventType.GOAL_KICK, team_id="away"),
+    EventType.CORNER_KICK: MatchEvent(minute=31, type=EventType.CORNER_KICK, team_id="home"),
+    EventType.THROW_IN: MatchEvent(minute=32, type=EventType.THROW_IN, team_id="away"),
     EventType.PENALTY_AWARDED: MatchEvent(
         minute=55, type=EventType.PENALTY_AWARDED, team_id="home", player_ids=["power_shooter"]
     ),

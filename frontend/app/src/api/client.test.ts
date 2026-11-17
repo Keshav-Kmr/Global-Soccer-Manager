@@ -1,6 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { buildDemoTeam, latestPitch } from "./client";
+import { buildDemoTeam, cloneTeamPayload, ensureDistinctMatchTeams, latestPitch } from "./client";
 import type { MatchWireEvent } from "../types";
+
+describe("ensureDistinctMatchTeams", () => {
+  it("clones away when the same club is loaded on both sides", () => {
+    const club = buildDemoTeam("club_united", "United City", 60);
+    const { home, away } = ensureDistinctMatchTeams(club, club);
+    expect(home.id).toBe("club_united");
+    expect(away.id).not.toBe(home.id);
+    const homePlayers = new Set([...home.starting_xi, ...home.bench].map((p) => p.id));
+    for (const p of [...away.starting_xi, ...away.bench]) {
+      expect(homePlayers.has(p.id)).toBe(false);
+    }
+  });
+
+  it("cloneTeamPayload rewrites player ids", () => {
+    const club = buildDemoTeam("club_a", "A", 60);
+    const copy = cloneTeamPayload(club, "club_a_b");
+    expect(copy.id).toBe("club_a_b");
+    expect(copy.starting_xi[0].id).toBe("club_a_b_0");
+  });
+});
 
 describe("buildDemoTeam", () => {
   it("builds a valid 4-3-3 squad for the API", () => {

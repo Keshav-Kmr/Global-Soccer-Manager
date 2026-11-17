@@ -16,6 +16,9 @@ _INTERRUPTION_WEIGHT = {
     "injury": 60,
     "substitution": 30,
     "tactic_change": 10,
+    "goal_kick": 8,
+    "corner_kick": 8,
+    "throw_in": 5,
 }
 
 

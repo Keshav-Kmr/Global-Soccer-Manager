@@ -8,6 +8,7 @@ from app.engine.clock import MatchClock, MatchPeriod
 from app.engine.events import EventType, MatchEvent
 from app.engine.match import Match
 from app.engine.match_situation import MatchSituation
+from app.engine.phase import Phase
 from app.engine.pitch import PitchModel, PitchState
 from app.engine.statistics import MatchStatistics, PlayerStatistics, TeamStatistics
 
@@ -115,6 +116,18 @@ def export_snapshot(match: Match) -> dict:
             match.team_a.id: match.team_a.substitutions_used,
             match.team_b.id: match.team_b.substitutions_used,
         },
+        "lineups": {
+            match.team_a.id: {
+                "starting_xi": [p.id for p in match.team_a.starting_xi],
+                "bench": [p.id for p in match.team_a.bench],
+            },
+            match.team_b.id: {
+                "starting_xi": [p.id for p in match.team_b.starting_xi],
+                "bench": [p.id for p in match.team_b.bench],
+            },
+        },
+        "chain_entry_phase": match._chain_entry_phase.value,
+        "set_piece": match._set_piece,
     }
 
 
@@ -141,8 +154,18 @@ def restore_snapshot(match: Match, snapshot: dict) -> None:
         referee_strictness=snapshot["referee_strictness"],
     )
 
+    def _restore_lineup(team: Team, lineup: dict) -> None:
+        xi = team._original_starting_xi if team._original_starting_xi is not None else team.starting_xi
+        bench = team._original_bench if team._original_bench is not None else team.bench
+        roster = {p.id: p for p in (*xi, *bench)}
+        team.starting_xi = [roster[pid] for pid in lineup["starting_xi"]]
+        team.bench = [roster[pid] for pid in lineup["bench"]]
+
     for team in (match.team_a, match.team_b):
         team.substitutions_used = snapshot["substitutions_used"][team.id]
+        lineup = snapshot.get("lineups", {}).get(team.id)
+        if lineup:
+            _restore_lineup(team, lineup)
         for player in (*team.starting_xi, *team.bench):
             state = snapshot["players"].get(player.id)
             if state:
@@ -189,3 +212,6 @@ def restore_snapshot(match: Match, snapshot: dict) -> None:
         ball_carrier_id=pitch.get("ball_carrier_id"),
         players={pid: {"x": pos["x"], "y": pos["y"]} for pid, pos in pitch.get("players", {}).items()},
     )
+
+    match._chain_entry_phase = Phase(snapshot.get("chain_entry_phase", Phase.BUILD_UP.value))
+    match._set_piece = snapshot.get("set_piece")

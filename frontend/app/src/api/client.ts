@@ -42,6 +42,40 @@ const ATTRS = [
   "marking", "strength", "positioning", "aggression", "composure", "stamina", "flair",
 ] as const;
 
+/** Duplicate a saved club with new team + player ids (same side twice in Squad Hub). */
+export function cloneTeamPayload(team: TeamPayload, newTeamId: string): TeamPayload {
+  const prefix = `${team.id}_`;
+  const remapPlayerId = (playerId: string) =>
+    playerId.startsWith(prefix) ? `${newTeamId}_${playerId.slice(prefix.length)}` : `${newTeamId}_${playerId}`;
+
+  return {
+    ...team,
+    id: newTeamId,
+    name: team.name.endsWith(" (copy)") ? team.name : `${team.name} (copy)`,
+    starting_xi: team.starting_xi.map((p) => ({ ...p, id: remapPlayerId(p.id) })),
+    bench: team.bench.map((p) => ({ ...p, id: remapPlayerId(p.id) })),
+  };
+}
+
+function playerIds(team: TeamPayload): Set<string> {
+  return new Set([...team.starting_xi, ...team.bench].map((p) => p.id));
+}
+
+/** Satisfy backend lineup rules: distinct team ids and no shared player ids. */
+export function ensureDistinctMatchTeams(
+  home: TeamPayload,
+  away: TeamPayload,
+): { home: TeamPayload; away: TeamPayload } {
+  let awayOut = away;
+  const needsClone =
+    home.id === away.id || [...playerIds(home)].some((id) => playerIds(awayOut).has(id));
+  if (needsClone) {
+    const suffix = home.id === away.id ? "_b" : "_away";
+    awayOut = cloneTeamPayload(awayOut, `${away.id}${suffix}`);
+  }
+  return { home, away: awayOut };
+}
+
 export function buildDemoTeam(teamId: string, name: string, overall = 62): TeamPayload {
   const attributes = Object.fromEntries(ATTRS.map((a) => [a, overall]));
   const starting_xi = FORMATION_433.map((position, i) => ({

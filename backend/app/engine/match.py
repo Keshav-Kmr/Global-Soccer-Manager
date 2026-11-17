@@ -10,7 +10,7 @@ effect on the very next chain.
 
 import random
 
-from app.domain.formation import Formation, validate_starting_xi
+from app.domain.formation import FORMATION_SLOTS, Formation, validate_starting_xi
 from app.domain.match_context import MatchContext
 from app.domain.player import Player
 from app.domain.tactic import Tactic
@@ -20,7 +20,9 @@ from app.engine.clock import MINUTES_PER_CHAIN, MATCH_MINUTES, MatchClock
 from app.engine.events import EventType, KEY_EVENT_TYPES, MatchEvent, _STOPPAGE_EVENT_TYPES
 from app.engine.match_situation import MatchSituation
 from app.engine.pitch import PitchModel
+from app.engine.phase import Phase
 from app.engine.possession_chain import ChainResult, PossessionChainEngine
+from app.engine.restart import RestartKind, ball_coords_for_restart
 from app.engine.statistics import MatchStatistics
 
 _REFEREE_STRICTNESS_RANGE = (0.7, 1.3)
@@ -71,6 +73,8 @@ class Match:
         self._rng = random.Random(seed)
         self._chain_engine = PossessionChainEngine()
         self._possession, self._other = team_a, team_b
+        self._chain_entry_phase = Phase.BUILD_UP
+        self._set_piece: str | None = None
         self._situation = MatchSituation(
             home_team_id=team_a.id,
             context=context or MatchContext(),
@@ -94,24 +98,30 @@ class Match:
         self.statistics.on_minute_advanced(self._clock.minute)
         self.statistics.possession_chain(self._possession.id)
 
+        attacking, defending = self._possession, self._other
         result = self._chain_engine.run(
             self._clock.minute,
-            self._possession,
-            self._other,
+            attacking,
+            defending,
             self._rng,
             self._situation,
             pitch_state=self._pitch.state,
-            attacks_right=self._pitch.team_attacks_right(self._possession.id),
+            attacks_right=self._pitch.team_attacks_right(attacking.id),
+            chain_entry_phase=self._chain_entry_phase,
+            set_piece=self._set_piece,
         )
+        self._chain_entry_phase = Phase.BUILD_UP
+        self._set_piece = None
+
         self._commit_chain_events(result)
         self._handle_auto_substitutions(result)
+        self._apply_chain_possession(result)
 
         carrier = self._player_by_id(result.ball_carrier_id)
-        self._pitch.after_chain(self._possession, self._other, result.last_phase, carrier)
-
-        if not result.possession_retained:
-            self._possession, self._other = self._other, self._possession
-            self._pitch.state.possession_team_id = self._possession.id
+        holder = self._possession
+        self._pitch.after_chain(holder, self._other, result.last_phase, carrier)
+        self._place_ball_for_restarts(result)
+        self._emit_kickoff_after_goal(result)
 
         if self._clock.should_emit_halftime():
             self._append_event(
@@ -124,6 +134,14 @@ class Match:
             )
             self._clock.mark_halftime()
             self._pitch.reset_for_kickoff(self._possession.id)
+            self._append_event(
+                MatchEvent(
+                    minute=self._clock.minute,
+                    type=EventType.KICKOFF,
+                    team_id=self._possession.id,
+                    payload={"restart": "second_half"},
+                )
+            )
 
         if self._clock.should_finish():
             self._append_event(
@@ -145,6 +163,55 @@ class Match:
     def _commit_chain_events(self, result: ChainResult) -> None:
         for event in result.events:
             self._append_event(event)
+
+    def _apply_chain_possession(self, result: ChainResult) -> None:
+        if result.next_possession_team_id:
+            holder = self.team_by_id(result.next_possession_team_id)
+            if holder is None:
+                return
+            self._other = self.team_a if holder.id == self.team_b.id else self.team_b
+            self._possession = holder
+            self._pitch.state.possession_team_id = holder.id
+        elif result.possession_retained:
+            pass
+        else:
+            self._possession, self._other = self._other, self._possession
+            self._pitch.state.possession_team_id = self._possession.id
+
+        self._chain_entry_phase = result.chain_entry_phase
+        self._set_piece = result.set_piece
+
+    def _place_ball_for_restarts(self, result: ChainResult) -> None:
+        restart_types = {
+            EventType.FREE_KICK,
+            EventType.GOAL_KICK,
+            EventType.CORNER_KICK,
+            EventType.THROW_IN,
+        }
+        for event in reversed(result.events):
+            if event.type not in restart_types or not event.team_id:
+                continue
+            kind = RestartKind(event.type.value)
+            attacks_right = self._pitch.team_attacks_right(event.team_id)
+            x, y = ball_coords_for_restart(kind, attacks_right=attacks_right, entry=result.chain_entry_phase)
+            self._pitch.place_ball(x, y, event.team_id)
+            return
+
+    def _emit_kickoff_after_goal(self, result: ChainResult) -> None:
+        if not any(e.type in (EventType.GOAL, EventType.PENALTY_GOAL) for e in result.events):
+            return
+        kicking = result.next_possession_team_id
+        if not kicking:
+            return
+        self._pitch.reset_for_kickoff(kicking)
+        self._append_event(
+            MatchEvent(
+                minute=self._clock.minute,
+                type=EventType.KICKOFF,
+                team_id=kicking,
+                payload={"restart": "after_goal"},
+            )
+        )
 
     def _append_event(self, event: MatchEvent) -> None:
         event.payload = self._pitch.attach(dict(event.payload))
@@ -237,8 +304,10 @@ class Match:
         )
 
     def change_formation(self, team: Team, formation: Formation) -> None:
-        validate_starting_xi(team.starting_xi, formation)
+        for player, slot in zip(team.starting_xi, FORMATION_SLOTS[formation], strict=True):
+            player.position = slot
         team.formation = formation
+        validate_starting_xi(team.starting_xi, formation)
         self._pitch.refresh_team(team)
         self._append_event(
             MatchEvent(

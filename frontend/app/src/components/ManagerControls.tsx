@@ -218,7 +218,7 @@ export function ManagerControls({
               <label>
                 Formation
                 <select
-                  defaultValue={managedTeam.formation}
+                  value={managedTeam.formation}
                   onChange={(e) => onFormation(managedTeam.id, e.target.value)}
                 >
                   {FORMATIONS.map((f) => (
