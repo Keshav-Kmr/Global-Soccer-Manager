@@ -200,21 +200,80 @@ body {
 }
 
 .commentary__item {
-  display: grid;
-  grid-template-columns: 2.5rem 1fr;
-  gap: 0.5rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
   padding: 0.45rem 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   font-size: 0.92rem;
 }
 
-.commentary__item--key {
-  color: #fde68a;
-}
-
 .commentary__minute {
+  flex: 0 0 2.25rem;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+}
+
+.commentary__line {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.4;
+}
+
+.commentary__text::before {
+  content: "·";
+  margin: 0 0.4rem;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.commentary__text {
+  display: inline;
+}
+
+.commentary__item--home .commentary__text {
+  color: #93c5fd;
+}
+
+.commentary__item--away .commentary__text {
+  color: #fca5a5;
+}
+
+.commentary__item--neutral .commentary__text {
+  color: var(--text);
+}
+
+.commentary__item--key.commentary__item--home .commentary__text {
+  color: #bfdbfe;
+  font-weight: 600;
+}
+
+.commentary__item--key.commentary__item--away .commentary__text {
+  color: #fecaca;
+  font-weight: 600;
+}
+
+.commentary__item--key.commentary__item--neutral .commentary__text {
+  color: #fde68a;
+  font-weight: 600;
+}
+
+.commentary__item--home {
+  border-left: 2px solid transparent;
+}
+
+.commentary__item--away {
+  border-left: 2px solid transparent;
+}
+
+.commentary__item--home.commentary__item--key {
+  border-left-color: var(--home);
+  padding-left: 0.35rem;
+}
+
+.commentary__item--away.commentary__item--key {
+  border-left-color: var(--away);
+  padding-left: 0.35rem;
 }
 
 .stat-row {
@@ -395,6 +454,118 @@ select {
 .player-stats__tabs {
   display: flex;
   gap: 0.35rem;
+}
+
+.commentary__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.commentary__item--replay {
+  background: rgba(250, 204, 21, 0.15);
+  border-left: 3px solid #facc15;
+  animation: replay-pulse 1.2s ease-in-out 2;
+}
+
+.commentary__replay-badge {
+  margin-right: 0.45rem;
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: #facc15;
+  letter-spacing: 0.05em;
+}
+
+.commentary__type {
+  display: inline;
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: capitalize;
+  font-weight: 600;
+}
+
+.commentary__item--home .commentary__type {
+  color: #60a5fa;
+}
+
+.commentary__item--away .commentary__type {
+  color: #f87171;
+}
+
+@keyframes replay-pulse {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.25);
+  }
+}
+
+.squad-hub__msg {
+  margin: 0.5rem 0 0;
+  font-size: 0.9rem;
+  color: #93c5fd;
+}
+
+.squad-hub__error {
+  margin: 0.5rem 0 0;
+  font-size: 0.9rem;
+  color: var(--danger);
+}
+
+.squad-hub__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 900px) {
+  .squad-hub__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.squad-hub__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.squad-hub__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.squad-hub__meta {
+  display: block;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.squad-hub__tactics {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.squad-hub__preview-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  font-size: 0.82rem;
+}
+
+.squad-hub__preview-grid ul {
+  margin: 0.25rem 0 0;
+  padding-left: 1.1rem;
 }
 
 .controls__team-pick {

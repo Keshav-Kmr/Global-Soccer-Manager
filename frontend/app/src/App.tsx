@@ -4,6 +4,7 @@ import { CommentaryFeed } from "./components/CommentaryFeed";
 import { StatisticsPanel } from "./components/StatisticsPanel";
 import { PlayerStatistics } from "./components/PlayerStatistics";
 import { ManagerControls } from "./components/ManagerControls";
+import { SquadHub } from "./components/SquadHub";
 import { useMatchSession } from "./hooks/useMatchSession";
 
 export default function App() {
@@ -26,6 +27,13 @@ export default function App() {
           <span className="banner__hint"> Is the backend running? (uvicorn from backend/)</span>
         </div>
       )}
+
+      <SquadHub
+        home={session.homeTeam}
+        away={session.awayTeam}
+        onHomeChange={session.setHomeTeam}
+        onAwayChange={session.setAwayTeam}
+      />
 
       <main className="layout">
         <div className="layout__main">
@@ -53,12 +61,20 @@ export default function App() {
             onSubstitution={session.applySubstitution}
             onStartControlled={() => session.startNewMatch("controlled")}
             onStartAuto={() => session.startNewMatch("auto")}
+            onReplayLast={session.replayLastEvent}
+            hasEvents={session.events.length > 0}
           />
         </div>
 
         <aside className="layout__side">
           <StatisticsPanel stats={session.stats} home={session.homeTeam} away={session.awayTeam} />
-          <CommentaryFeed events={session.events} />
+          <CommentaryFeed
+            events={session.events}
+            replayHighlightIndex={session.replayHighlightIndex}
+            homeTeamId={session.homeTeam?.id ?? session.state?.team_a_id ?? null}
+            awayTeamId={session.awayTeam?.id ?? session.state?.team_b_id ?? null}
+            onClearReplay={session.clearReplayHighlight}
+          />
         </aside>
       </main>
 

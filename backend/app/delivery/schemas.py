@@ -11,6 +11,8 @@ the engine actually runs on; nothing in engine/ or domain/ ever imports
 from here.
 """
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from app.domain.formation import Formation
@@ -151,6 +153,50 @@ class RestoreSnapshotRequest(BaseModel):
     snapshot: dict
 
 
+class ReplayActionSchema(BaseModel):
+    at_minute: int = Field(ge=0, le=130)
+    action: Literal["tactic_change", "formation_change", "substitution"]
+    team_id: str
+    tactic: TacticSchema | None = None
+    formation: Formation | None = None
+    player_out_id: str | None = None
+    player_in_id: str | None = None
+
+
+class ReplayMatchRequest(BaseModel):
+    team_a: TeamSchema
+    team_b: TeamSchema
+    seed: int
+    weather: Weather = Weather.CLEAR
+    actions: list[ReplayActionSchema] = Field(default_factory=list)
+    include_commentary: bool = True
+
+
+class ReplayMatchResponse(BaseModel):
+    seed: int
+    score: dict[str, int]
+    team_a_id: str
+    team_b_id: str
+    score_a: int
+    score_b: int
+    event_count: int
+    events: list[dict]
+    statistics: dict
+    summary: list[str]
+    player_states: list[dict]
+
+
+class VerifyReplayResponse(BaseModel):
+    match_id: str
+    found_stored_result: bool
+    score_matches: bool
+    event_signature_matches: bool
+    stored_score: dict[str, int]
+    replay_score: dict[str, int]
+    stored_event_count: int
+    replay_event_count: int
+
+
 class MatchResultSchema(BaseModel):
     """The durable, post-match record — see persistence/match_result_repository.py."""
 
@@ -188,6 +234,51 @@ def _tactic_from_schema(schema: TacticSchema) -> Tactic:
     )
 
 
+def _player_to_schema(player: Player) -> PlayerSchema:
+    attrs = player.attributes
+    return PlayerSchema(
+        id=player.id,
+        name=player.name,
+        position=player.position,
+        attributes=PlayerAttributesSchema(
+            pace=attrs.pace,
+            dribbling=attrs.dribbling,
+            passing=attrs.passing,
+            vision=attrs.vision,
+            shooting=attrs.shooting,
+            tackling=attrs.tackling,
+            marking=attrs.marking,
+            strength=attrs.strength,
+            positioning=attrs.positioning,
+            aggression=attrs.aggression,
+            composure=attrs.composure,
+            stamina=attrs.stamina,
+            flair=attrs.flair,
+            reflexes=attrs.reflexes,
+            handling=attrs.handling,
+            gk_positioning=attrs.gk_positioning,
+        ),
+    )
+
+
+def team_to_schema(team: Team) -> TeamSchema:
+    return TeamSchema(
+        id=team.id,
+        name=team.name,
+        starting_xi=[_player_to_schema(p) for p in team.starting_xi],
+        bench=[_player_to_schema(p) for p in team.bench],
+        tactic=TacticSchema(
+            mentality=team.tactic.mentality,
+            tempo=team.tactic.tempo,
+            pressing=team.tactic.pressing,
+            width=team.tactic.width,
+            defensive_line=team.tactic.defensive_line,
+            marking_scheme=team.tactic.marking_scheme,
+        ),
+        formation=team.formation,
+    )
+
+
 def team_from_schema(schema: TeamSchema) -> Team:
     return Team(
         id=schema.id,
@@ -201,3 +292,24 @@ def team_from_schema(schema: TeamSchema) -> Team:
 
 def context_from_request(request: CreateMatchRequest) -> MatchContext:
     return MatchContext(weather=request.weather)
+
+
+def validate_match_lineups(team_a: Team, team_b: Team) -> None:
+    """Cross-team and duplicate-ID checks beyond formation slot validation."""
+    if team_a.id == team_b.id:
+        raise ValueError("team_a and team_b must have distinct ids")
+
+    for label, team in (("team_a", team_a), ("team_b", team_b)):
+        roster_ids = [p.id for p in (*team.starting_xi, *team.bench)]
+        if len(roster_ids) != len(set(roster_ids)):
+            raise ValueError(f"{label} has duplicate player ids")
+        starting = {p.id for p in team.starting_xi}
+        bench = {p.id for p in team.bench}
+        if starting & bench:
+            raise ValueError(f"{label} has a player in both starting_xi and bench")
+
+    ids_a = {p.id for p in (*team_a.starting_xi, *team_a.bench)}
+    ids_b = {p.id for p in (*team_b.starting_xi, *team_b.bench)}
+    overlap = ids_a & ids_b
+    if overlap:
+        raise ValueError(f"player id(s) appear on both teams: {sorted(overlap)}")

@@ -21,6 +21,8 @@ type Props = {
   onSubstitution: (teamId: string, outId: string, inId: string) => void;
   onStartAuto: () => void;
   onStartControlled: () => void;
+  onReplayLast: () => void;
+  hasEvents: boolean;
   loading: boolean;
 };
 
@@ -35,6 +37,8 @@ export function ManagerControls({
   onSubstitution,
   onStartAuto,
   onStartControlled,
+  onReplayLast,
+  hasEvents,
   loading,
 }: Props) {
   const [subOut, setSubOut] = useState("");
@@ -84,6 +88,9 @@ export function ManagerControls({
             )}
             <button type="button" className="btn" onClick={onPauseToggle}>
               {state.paused ? "Resume" : "Pause"}
+            </button>
+            <button type="button" className="btn" disabled={!hasEvents} onClick={onReplayLast}>
+              Replay last move
             </button>
           </div>
 
@@ -263,6 +270,15 @@ export function ManagerControls({
             </div>
           )}
         </>
+      )}
+
+      {state && finished && (
+        <div className="controls__row">
+          <span className="controls__hint">Match complete — full event log is in the sidebar.</span>
+          <button type="button" className="btn" disabled={!hasEvents} onClick={onReplayLast}>
+            Replay last move
+          </button>
+        </div>
       )}
     </section>
   );

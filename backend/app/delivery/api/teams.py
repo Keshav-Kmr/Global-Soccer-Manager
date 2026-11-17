@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from app.delivery.schemas import TeamSchema, team_from_schema
+from app.delivery.schemas import TeamSchema, team_from_schema, team_to_schema
 from app.delivery.services.team_service import TeamService
 
 router = APIRouter()
@@ -23,10 +23,10 @@ async def get_team(team_id: str, service: TeamService = Depends(get_team_service
     team = await service.get(team_id)
     if team is None:
         raise HTTPException(status_code=404, detail="team not found")
-    return TeamSchema.model_validate(team, from_attributes=True)
+    return team_to_schema(team)
 
 
 @router.get("/teams", response_model=list[TeamSchema])
 async def list_teams(service: TeamService = Depends(get_team_service)) -> list[TeamSchema]:
     teams = await service.list_all()
-    return [TeamSchema.model_validate(team, from_attributes=True) for team in teams]
+    return [team_to_schema(team) for team in teams]

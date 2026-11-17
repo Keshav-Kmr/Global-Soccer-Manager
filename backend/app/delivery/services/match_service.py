@@ -11,13 +11,21 @@ from app.domain.match_context import MatchContext
 from app.domain.player import Player
 from app.domain.tactic import Tactic
 from app.domain.team import Team
-from app.delivery.schemas import MatchEventMessage
+from app.delivery.schemas import (
+    MatchEventMessage,
+    ReplayActionSchema,
+    ReplayMatchRequest,
+    _tactic_from_schema,
+    team_from_schema,
+    validate_match_lineups,
+)
 from app.delivery.services.match_session import MatchRunMode, MatchSession
 from app.delivery.services.pacer import Pacer
 from app.engine.auto_substitution import MAX_SUBSTITUTIONS
 from app.engine.clock import MINUTES_PER_CHAIN
-from app.engine.events import MatchEvent
+from app.engine.events import KEY_EVENT_TYPES, EventType, MatchEvent
 from app.engine.match import Match
+from app.engine.match_replay import ReplayAction, run_replay
 from app.engine.match_snapshot import export_snapshot, restore_snapshot
 from app.engine.summary import build_match_summary, final_score, player_end_states
 from app.persistence.match_result_repository import MatchResult, MatchResultRepository
@@ -67,6 +75,7 @@ class MatchService:
         controlled: bool = False,
     ) -> str:
         match_id = str(uuid.uuid4())
+        validate_match_lineups(team_a, team_b)
         resolved_seed = seed if seed is not None else random.randint(0, 2**31 - 1)
         match = Match(team_a, team_b, resolved_seed, context)
         roster = self._build_roster(team_a, team_b)
@@ -180,24 +189,45 @@ class MatchService:
             raise MatchPausedError("match is paused")
 
         advanced = 0
+        max_chains = 500
+
+        async def step_chain() -> bool:
+            nonlocal advanced
+            if match.finished:
+                return False
+            match.play_next_chain()
+            advanced += 1
+            self._flush_new_events(session)
+            await asyncio.sleep(0)
+            return True
+
         if until_finished:
             while not match.finished:
-                match.play_next_chain()
-                advanced += 1
+                await step_chain()
         elif target_minute is not None:
-            advanced = match.play_to_minute(target_minute)
+            while not match.finished and match.minute < target_minute and advanced < max_chains:
+                await step_chain()
         elif next_key_event:
-            advanced = match.play_to_next_key_event()
+            while not match.finished and advanced < max_chains:
+                before = len(match.events)
+                if not await step_chain():
+                    break
+                found_key = False
+                for event in match.events[before:]:
+                    if event.type not in KEY_EVENT_TYPES:
+                        continue
+                    if event.type == EventType.CARD and event.payload.get("color") != "red":
+                        continue
+                    found_key = True
+                    break
+                if found_key or match.finished:
+                    break
         else:
             if steps < 1:
                 raise InvalidMatchCommandError("steps must be at least 1")
             for _ in range(steps):
-                if match.finished:
+                if not await step_chain():
                     break
-                match.play_next_chain()
-                advanced += 1
-
-        self._flush_new_events(session)
         if match.finished:
             await self._finalize(session)
 
@@ -327,3 +357,83 @@ class MatchService:
         if self._match_result_repository is None:
             return None
         return await self._match_result_repository.get(match_id)
+
+    def replay_match(self, request: ReplayMatchRequest) -> dict:
+        team_a = team_from_schema(request.team_a)
+        team_b = team_from_schema(request.team_b)
+        validate_match_lineups(team_a, team_b)
+        context = MatchContext(weather=request.weather)
+        actions = [_replay_action_from_schema(a) for a in request.actions]
+        match = run_replay(team_a, team_b, request.seed, context, actions)
+        score = final_score(match.events, team_a.id, team_b.id)
+        events = self._match_events_to_wire(
+            match, team_a, team_b, include_commentary=request.include_commentary
+        )
+        return {
+            "seed": request.seed,
+            "score": score,
+            "team_a_id": team_a.id,
+            "team_b_id": team_b.id,
+            "score_a": score[team_a.id],
+            "score_b": score[team_b.id],
+            "event_count": len(events),
+            "events": events,
+            "statistics": match.statistics.to_dict(),
+            "summary": build_match_summary(match.events, match.statistics, team_a, team_b),
+            "player_states": player_end_states(team_a, team_b, match.statistics),
+        }
+
+    async def verify_replay(self, match_id: str, request: ReplayMatchRequest) -> dict:
+        replayed = self.replay_match(request)
+        stored = await self.get_result(match_id)
+        found = stored is not None
+        stored_score = {
+            request.team_a.id: stored.score_a,
+            request.team_b.id: stored.score_b,
+        } if stored else {}
+        replay_score = replayed["score"]
+        score_matches = found and (
+            stored.score_a == replayed["score_a"] and stored.score_b == replayed["score_b"]
+        )
+        stored_sig = _event_signature(stored.events) if stored else []
+        replay_sig = _event_signature(replayed["events"])
+        return {
+            "match_id": match_id,
+            "found_stored_result": found,
+            "score_matches": score_matches,
+            "event_signature_matches": found and stored_sig == replay_sig,
+            "stored_score": stored_score,
+            "replay_score": replay_score,
+            "stored_event_count": len(stored.events) if stored else 0,
+            "replay_event_count": replayed["event_count"],
+        }
+
+    def _match_events_to_wire(
+        self, match: Match, team_a: Team, team_b: Team, *, include_commentary: bool
+    ) -> list[dict]:
+        roster = self._build_roster(team_a, team_b)
+        commentary_rng = random.Random(match.seed) if include_commentary else None
+        wire: list[dict] = []
+        for index, event in enumerate(match.events):
+            message = self._to_message(event, roster, commentary_rng or random.Random(0), index)
+            payload = message.model_dump()
+            if not include_commentary:
+                payload["commentary"] = ""
+            wire.append(payload)
+        return wire
+
+
+def _replay_action_from_schema(schema: ReplayActionSchema) -> ReplayAction:
+    return ReplayAction(
+        at_minute=schema.at_minute,
+        kind=schema.action,
+        team_id=schema.team_id,
+        tactic=_tactic_from_schema(schema.tactic) if schema.tactic else None,
+        formation=schema.formation,
+        player_out_id=schema.player_out_id,
+        player_in_id=schema.player_in_id,
+    )
+
+
+def _event_signature(events: list[dict]) -> list[tuple]:
+    return [(e.get("minute"), e.get("type"), e.get("team"), e.get("players")) for e in events]

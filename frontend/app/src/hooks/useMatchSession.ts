@@ -1,20 +1,22 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   advanceMatch,
   changeFormation,
   changeTactics,
   createMatch,
   getEvents,
+  getMatchResult,
   getMatchState,
   getStatistics,
+  latestPitch,
   matchWebSocketUrl,
   pauseMatch,
+  pitchFromEvent,
   resumeMatch,
   substitute,
   buildDemoTeam,
-  latestPitch,
 } from "../api/client";
-import type { MatchState, MatchStatistics, MatchWireEvent, RosterEntry, TeamPayload } from "../types";
+import type { MatchState, MatchStatistics, MatchWireEvent, PitchSnapshot, RosterEntry, TeamPayload } from "../types";
 
 const KEY_EVENT_TYPES = new Set([
   "goal",
@@ -51,6 +53,7 @@ export function useMatchSession() {
   const [homeTeam, setHomeTeam] = useState<TeamPayload | null>(null);
   const [awayTeam, setAwayTeam] = useState<TeamPayload | null>(null);
   const [roster, setRoster] = useState<Map<string, RosterEntry>>(new Map());
+  const [replayHighlightIndex, setReplayHighlightIndex] = useState<number | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const lastIndexRef = useRef(-1);
 
@@ -74,14 +77,33 @@ export function useMatchSession() {
       const nextStats = await getStatistics(id).catch(() => null);
       if (nextStats) setStats(nextStats);
     }
+    return nextState;
   }, []);
 
-  const syncFromBackend = useCallback(async (id: string) => {
-    const restEvents = await getEvents(id);
-    setEvents(restEvents);
-    lastIndexRef.current = restEvents.length > 0 ? restEvents[restEvents.length - 1].index : -1;
-    await refreshState(id);
-  }, [refreshState]);
+  const loadAllEvents = useCallback(async (id: string, finished: boolean) => {
+    let full = await getEvents(id);
+    if (finished) {
+      try {
+        const result = await getMatchResult(id);
+        if (result.events.length > full.length) {
+          full = result.events;
+        }
+      } catch {
+        /* live or not persisted yet */
+      }
+    }
+    setEvents(full);
+    lastIndexRef.current = full.length > 0 ? full[full.length - 1].index : -1;
+    return full;
+  }, []);
+
+  const syncFromBackend = useCallback(
+    async (id: string) => {
+      const nextState = await refreshState(id);
+      await loadAllEvents(id, nextState.finished);
+    },
+    [loadAllEvents, refreshState],
+  );
 
   const handleWireEvent = useCallback(
     (event: MatchWireEvent) => {
@@ -117,42 +139,66 @@ export function useMatchSession() {
     [handleWireEvent, syncFromBackend],
   );
 
-  const startNewMatch = useCallback(async (mode: "auto" | "controlled" = "controlled") => {
-    setLoading(true);
-    setError(null);
-    try {
-      const home = buildDemoTeam(`home_${Date.now()}`, "FC Phoenix", 64);
-      const away = buildDemoTeam(`away_${Date.now()}`, "United City", 61);
-      setHomeTeam(home);
-      setAwayTeam(away);
-      buildRoster(home, away);
-      const { match_id } = await createMatch(home, away, { mode });
-      setMatchId(match_id);
-      setEvents([]);
-      lastIndexRef.current = -1;
-      const initial = await getMatchState(match_id);
-      setState(initial);
-      await refreshState(match_id);
-      connectStream(match_id);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to start match");
-    } finally {
-      setLoading(false);
-    }
-  }, [buildRoster, connectStream, refreshState]);
+  const startNewMatch = useCallback(
+    async (mode: "auto" | "controlled" = "controlled") => {
+      setLoading(true);
+      setError(null);
+      setReplayHighlightIndex(null);
+      try {
+        const home = homeTeam ?? buildDemoTeam(`home_${Date.now()}`, "FC Phoenix", 64);
+        const away = awayTeam ?? buildDemoTeam(`away_${Date.now()}`, "United City", 61);
+        setHomeTeam(home);
+        setAwayTeam(away);
+        buildRoster(home, away);
+        const { match_id } = await createMatch(home, away, { mode });
+        setMatchId(match_id);
+        setEvents([]);
+        lastIndexRef.current = -1;
+        await refreshState(match_id);
+        await loadAllEvents(match_id, false);
+        connectStream(match_id);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to start match");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [awayTeam, buildRoster, connectStream, homeTeam, loadAllEvents, refreshState],
+  );
 
   useEffect(() => {
     if (!matchId || !state?.finished) return;
-    void refreshState(matchId);
-  }, [matchId, state?.finished, refreshState]);
+    void syncFromBackend(matchId);
+  }, [matchId, state?.finished, syncFromBackend]);
+
+  useEffect(() => {
+    if (!homeTeam) setHomeTeam(buildDemoTeam("club_phoenix", "FC Phoenix", 64));
+    if (!awayTeam) setAwayTeam(buildDemoTeam("club_united", "United City", 61));
+  }, [awayTeam, homeTeam]);
 
   useEffect(() => () => wsRef.current?.close(), []);
 
-  const pitch = latestPitch(events);
+  const pitch: PitchSnapshot | null = useMemo(() => {
+    if (replayHighlightIndex != null) {
+      const ev = events.find((e) => e.index === replayHighlightIndex);
+      const snap = pitchFromEvent(ev);
+      if (snap) return snap;
+    }
+    return latestPitch(events);
+  }, [events, replayHighlightIndex]);
 
-  const runAdvance = async (options: { steps?: number; targetMinute?: number; nextKey?: boolean; untilFinished?: boolean }) => {
+  const runAdvance = async (options: {
+    steps?: number;
+    targetMinute?: number;
+    nextKey?: boolean;
+    untilFinished?: boolean;
+  }) => {
     if (!matchId) return;
+    setReplayHighlightIndex(null);
     try {
+      if (options.untilFinished || (options.steps ?? 0) > 8) {
+        wsRef.current?.close();
+      }
       const result = await advanceMatch(matchId, options);
       await syncFromBackend(matchId);
       if (result.finished) wsRef.current?.close();
@@ -160,6 +206,14 @@ export function useMatchSession() {
       setError(e instanceof Error ? e.message : "Advance failed");
     }
   };
+
+  const replayLastEvent = () => {
+    if (events.length === 0) return;
+    const last = events[events.length - 1];
+    setReplayHighlightIndex(last.index);
+  };
+
+  const clearReplayHighlight = () => setReplayHighlightIndex(null);
 
   const togglePause = async () => {
     if (!matchId || !state) return;
@@ -183,23 +237,28 @@ export function useMatchSession() {
     awayTeam,
     roster,
     pitch,
+    replayHighlightIndex,
+    setHomeTeam,
+    setAwayTeam,
     startNewMatch,
     runAdvance,
+    replayLastEvent,
+    clearReplayHighlight,
     togglePause,
     async applyTactics(teamId: string, tactic: TeamPayload["tactic"]) {
       if (!matchId) return;
       await changeTactics(matchId, teamId, tactic);
-      await refreshState(matchId);
+      await syncFromBackend(matchId);
     },
     async applyFormation(teamId: string, formation: string) {
       if (!matchId) return;
       await changeFormation(matchId, teamId, formation);
-      await refreshState(matchId);
+      await syncFromBackend(matchId);
     },
     async applySubstitution(teamId: string, outId: string, inId: string) {
       if (!matchId) return;
       await substitute(matchId, teamId, outId, inId);
-      await refreshState(matchId);
+      await syncFromBackend(matchId);
     },
   };
 }
