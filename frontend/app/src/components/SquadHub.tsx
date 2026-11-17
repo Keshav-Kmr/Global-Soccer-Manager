@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { TeamPayload } from "../types";
-import { buildDemoTeam, listTeams, saveTeam } from "../api/client";
+import { buildDemoTeam, ensureDistinctMatchTeams, listTeams, saveTeam } from "../api/client";
+import { applyFormationToTeam, FORMATION_OPTIONS, isFormationCode } from "../formations";
 
 const TACTIC_PRESET_KEY = "gsm.tacticPresets";
 
@@ -67,9 +68,20 @@ export function SquadHub({ home, away, onHomeChange, onAwayChange }: Props) {
   const applyTeam = (team: TeamPayload, side: "home" | "away") => {
     const presets = loadPresets();
     const withTactic = presets[team.id] ? { ...team, tactic: presets[team.id] } : team;
-    if (side === "home") onHomeChange(withTactic);
-    else onAwayChange(withTactic);
-    setMessage(`Loaded ${team.name} as ${side}.`);
+    if (side === "home") {
+      onHomeChange(withTactic);
+      setMessage(`Loaded ${team.name} as home.`);
+      return;
+    }
+    const otherHome = home ?? withTactic;
+    const { away: awayFix } = ensureDistinctMatchTeams(otherHome, withTactic);
+    const cloned = awayFix.id !== withTactic.id;
+    onAwayChange(awayFix);
+    setMessage(
+      cloned
+        ? `Loaded ${team.name} as away (auto copy "${awayFix.name}" — teams need different ids).`
+        : `Loaded ${team.name} as away.`,
+    );
   };
 
   const saveTacticPreset = () => {
@@ -82,9 +94,14 @@ export function SquadHub({ home, away, onHomeChange, onAwayChange }: Props) {
 
   const persistTeamTactics = async () => {
     if (!editTeam) return;
-    await saveTeam(editTeam);
-    setMessage(`Team ${editTeam.name} saved with current tactics (database).`);
-    await refreshTeams();
+    setListError(null);
+    try {
+      await saveTeam(editTeam);
+      setMessage(`Team ${editTeam.name} saved (formation ${editTeam.formation}, tactics, lineup).`);
+      await refreshTeams();
+    } catch (err) {
+      setListError(err instanceof Error ? err.message : "Could not save team");
+    }
   };
 
   const updateTactic = (field: keyof TeamPayload["tactic"], value: string) => {
@@ -92,6 +109,14 @@ export function SquadHub({ home, away, onHomeChange, onAwayChange }: Props) {
     const next = { ...editTeam, tactic: { ...editTeam.tactic, [field]: value } };
     if (editSide === "home") onHomeChange(next);
     else onAwayChange(next);
+  };
+
+  const updateFormation = (raw: string) => {
+    if (!editTeam || !isFormationCode(raw)) return;
+    const next = applyFormationToTeam(editTeam, raw);
+    if (editSide === "home") onHomeChange(next);
+    else onAwayChange(next);
+    setMessage(`${editTeam.name} formation set to ${raw} (XI slots updated).`);
   };
 
   return (
@@ -167,9 +192,17 @@ export function SquadHub({ home, away, onHomeChange, onAwayChange }: Props) {
 
           {editTeam && (
             <div className="squad-hub__tactics">
-              <p className="squad-hub__meta">
-                {editTeam.name} · {editTeam.formation}
-              </p>
+              <p className="squad-hub__meta">{editTeam.name}</p>
+              <label>
+                formation
+                <select value={editTeam.formation} onChange={(e) => updateFormation(e.target.value)}>
+                  {FORMATION_OPTIONS.map((f) => (
+                    <option key={f} value={f}>
+                      {f}
+                    </option>
+                  ))}
+                </select>
+              </label>
               {(
                 [
                   ["mentality", ["defensive", "balanced", "attacking"]],

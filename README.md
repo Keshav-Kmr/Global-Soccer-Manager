@@ -41,7 +41,7 @@ real coordinates embedded in match events.
 |------|----------------|
 | **Simulation** | 11v11 possession chains, contest resolution, fatigue, home advantage, weather |
 | **Tactics** | Mentality, tempo, pressing, width, defensive line, marking — change mid-match with measurable effect |
-| **Set pieces & discipline** | Fouls, cards, injuries, substitutions (incl. AI auto-subs), simplified offside and penalties |
+| **Set pieces & discipline** | Fouls, cards, injuries, substitutions (incl. AI auto-subs), simplified offside and penalties; lightweight IFAB restarts (free kicks, goal kicks, corners, throw-ins, kick-offs after goals) |
 | **Narration** | Template commentary tied to event type and player attributes |
 | **Determinism** | Same teams + tactics + seed → same event log; headless replay with optional manager `actions` |
 

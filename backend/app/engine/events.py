@@ -30,6 +30,10 @@ class EventType(str, Enum):
     HALF_TIME = "half_time"
     FULL_TIME = "full_time"
     OFFSIDE = "offside"
+    FREE_KICK = "free_kick"
+    GOAL_KICK = "goal_kick"
+    CORNER_KICK = "corner_kick"
+    THROW_IN = "throw_in"
     PENALTY_AWARDED = "penalty_awarded"
     PENALTY_GOAL = "penalty_goal"
     PENALTY_SAVE = "penalty_save"
@@ -56,6 +60,9 @@ _STOPPAGE_EVENT_TYPES = frozenset({
     EventType.SUBSTITUTION,
     EventType.TACTIC_CHANGE,
     EventType.PENALTY_AWARDED,
+    EventType.GOAL_KICK,
+    EventType.CORNER_KICK,
+    EventType.THROW_IN,
 })
 
 

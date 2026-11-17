@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from factories import build_team, make_player
 
+from app.domain.formation import FORMATION_SLOTS, Formation
 from app.domain.player import Position
 from app.persistence.database import create_engine_and_session_factory, init_models
 from app.persistence.sql_team_repository import SqlTeamRepository
@@ -75,6 +76,21 @@ def test_bench_players_are_distinguished_from_starters():
     fetched_starter_ids = {p.id for p in fetched.starting_xi}
     assert fetched_bench_ids == {p.id for p in team.bench}
     assert not fetched_bench_ids & fetched_starter_ids
+
+
+def test_formation_round_trips_through_sqlite():
+    repository = _new_repository()
+    team = build_team("shape", "Shape FC", overall=60)
+    team.formation = Formation.FOUR_FOUR_TWO
+    for player, slot in zip(team.starting_xi, FORMATION_SLOTS[Formation.FOUR_FOUR_TWO], strict=True):
+        player.position = slot
+
+    _run(repository.save(team))
+    fetched = _run(repository.get("shape"))
+
+    assert fetched.formation == Formation.FOUR_FOUR_TWO
+    for player, slot in zip(fetched.starting_xi, FORMATION_SLOTS[Formation.FOUR_FOUR_TWO], strict=True):
+        assert player.position == slot
 
 
 def test_list_all_returns_every_saved_team():

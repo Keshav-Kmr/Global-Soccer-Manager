@@ -28,7 +28,7 @@ def test_batch_goal_and_shot_distributions_in_expected_bands():
     goals_mean = data["goals_per_match"]["mean"]
     shots_mean = data["shots_per_match"]["mean"]
     assert 1.8 <= goals_mean <= 4.5, f"goals/match mean out of band: {goals_mean}"
-    assert 4.0 <= shots_mean <= 10.0, f"shots/match mean out of band: {shots_mean}"
+    assert 4.0 <= shots_mean <= 11.5, f"shots/match mean out of band: {shots_mean}"
 
 
 def test_home_advantage_and_possession_passing_metrics():

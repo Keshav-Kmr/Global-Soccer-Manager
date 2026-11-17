@@ -99,6 +99,26 @@ TEMPLATES: dict[EventType, list[str]] = {
         "That's full time!",
         "The final whistle blows.",
     ],
+    EventType.FREE_KICK: [
+        "{team} take the free kick.",
+        "Play restarts with a free kick to {team}.",
+        "The referee awards a free kick to {team}.",
+    ],
+    EventType.GOAL_KICK: [
+        "Goal kick to {team}.",
+        "{team} restart from the goalkeeper.",
+        "The ball's out — goal kick for {team}.",
+    ],
+    EventType.CORNER_KICK: [
+        "Corner for {team}!",
+        "A corner kick — {team} will swing it in.",
+        "{team} win a corner.",
+    ],
+    EventType.THROW_IN: [
+        "Throw-in to {team}.",
+        "Out on the touchline — {team} take the throw.",
+        "The ball's gone out; {team} have the throw-in.",
+    ],
 }
 
 SHOT_TEMPLATES_BY_FLAVOR: dict[str, list[str]] = {

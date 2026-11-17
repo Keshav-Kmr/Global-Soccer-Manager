@@ -29,6 +29,8 @@ const KEY_TYPES = new Set([
   "half_time",
   "full_time",
   "shot",
+  "corner_kick",
+  "penalty_awarded",
 ]);
 
 export function CommentaryFeed({

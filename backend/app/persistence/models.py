@@ -28,6 +28,7 @@ class TeamModel(Base):
     width: Mapped[str]
     defensive_line: Mapped[str]
     marking_scheme: Mapped[str]
+    formation: Mapped[str] = mapped_column(default="4-3-3")
 
     players: Mapped[list["PlayerModel"]] = relationship(
         back_populates="team", cascade="all, delete-orphan"

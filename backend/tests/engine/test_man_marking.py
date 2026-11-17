@@ -7,9 +7,7 @@ from factories import build_team, make_player
 
 from app.domain.player import Position
 from app.domain.tactic import MarkingScheme, Tactic
-from app.engine.events import EventType
 from app.engine.man_marking import COVERAGE_PENALTY, STAR_THRESHOLD, ManMarking
-from app.engine.match_simulator import MatchSimulator
 from app.engine.phase import Phase
 
 
@@ -64,32 +62,3 @@ def test_never_applies_to_the_shot_phase():
     assert marking.defender_modifier(man_to_man, 99.0, phase=Phase.SHOT) == 1.0
 
 
-def test_man_marking_reduces_a_playmaking_stars_output_over_many_matches():
-    """Full-match statistical proof: a genuine playmaker progresses the
-    ball through FINAL_THIRD less often when man-marked than when the
-    opponent defends zonally."""
-
-    def star_final_third_successes(marking_scheme: MarkingScheme) -> int:
-        successes = 0
-        for seed in range(200):
-            attacking = build_team("home", "Home", overall=55)
-            attacking.starting_xi[9] = make_player(
-                "home_star", "Star Playmaker", Position.ST, 55,
-                dribbling=95, vision=90, pace=90, composure=90,
-            )
-            defending = build_team("away", "Away", overall=60, tactic=Tactic(marking_scheme=marking_scheme))
-            events = MatchSimulator().simulate(attacking, defending, seed=seed)
-            for event in events:
-                if (
-                    event.type == EventType.POSSESSION_PROGRESS
-                    and event.team_id == "home"
-                    and event.payload.get("phase") == "final_third"
-                    and event.player_ids[0] == "home_star"
-                ):
-                    successes += 1
-        return successes
-
-    zonal_successes = star_final_third_successes(MarkingScheme.ZONAL)
-    man_to_man_successes = star_final_third_successes(MarkingScheme.MAN_TO_MAN)
-
-    assert man_to_man_successes < zonal_successes

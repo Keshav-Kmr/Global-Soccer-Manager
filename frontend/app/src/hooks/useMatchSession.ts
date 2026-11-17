@@ -15,7 +15,9 @@ import {
   resumeMatch,
   substitute,
   buildDemoTeam,
+  ensureDistinctMatchTeams,
 } from "../api/client";
+import { applyFormationToTeam, isFormationCode } from "../formations";
 import type { MatchState, MatchStatistics, MatchWireEvent, PitchSnapshot, RosterEntry, TeamPayload } from "../types";
 
 const KEY_EVENT_TYPES = new Set([
@@ -146,11 +148,12 @@ export function useMatchSession() {
       setReplayHighlightIndex(null);
       try {
         const home = homeTeam ?? buildDemoTeam(`home_${Date.now()}`, "FC Phoenix", 64);
-        const away = awayTeam ?? buildDemoTeam(`away_${Date.now()}`, "United City", 61);
-        setHomeTeam(home);
+        const awayRaw = awayTeam ?? buildDemoTeam(`away_${Date.now()}`, "United City", 61);
+        const { home: homeFix, away } = ensureDistinctMatchTeams(home, awayRaw);
+        setHomeTeam(homeFix);
         setAwayTeam(away);
-        buildRoster(home, away);
-        const { match_id } = await createMatch(home, away, { mode });
+        buildRoster(homeFix, away);
+        const { match_id } = await createMatch(homeFix, away, { mode });
         setMatchId(match_id);
         setEvents([]);
         lastIndexRef.current = -1;
@@ -251,9 +254,15 @@ export function useMatchSession() {
       await syncFromBackend(matchId);
     },
     async applyFormation(teamId: string, formation: string) {
-      if (!matchId) return;
-      await changeFormation(matchId, teamId, formation);
-      await syncFromBackend(matchId);
+      if (!matchId || !isFormationCode(formation)) return;
+      try {
+        await changeFormation(matchId, teamId, formation);
+        await syncFromBackend(matchId);
+        setHomeTeam((h) => (h?.id === teamId ? applyFormationToTeam(h, formation) : h));
+        setAwayTeam((a) => (a?.id === teamId ? applyFormationToTeam(a, formation) : a));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Formation change failed");
+      }
     },
     async applySubstitution(teamId: string, outId: string, inId: string) {
       if (!matchId) return;
