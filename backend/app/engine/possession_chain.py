@@ -21,6 +21,7 @@ home_advantage.py, and weather_modifiers.py for each piece.
 import random
 
 from app.domain.player import Player
+from app.domain.tactic import DefensiveLine
 from app.domain.team import Team
 from app.engine.brilliance import BONUS_MULTIPLIER, BrillianceCheck
 from app.engine.card import Card, CardCheck
@@ -37,6 +38,9 @@ from app.engine.rating.calculator import PhaseRatingCalculator
 from app.engine.rating.selector import ProtagonistSelector
 from app.engine.rating.tables import BLEND, eligible_players
 from app.engine.tactical_matchup import TacticalMatchup
+from app.engine.offside import OffsideCheck
+from app.engine.penalty import PenaltyEngine, in_penalty_area
+from app.engine.pitch import PitchState
 from app.engine.weather_modifiers import WeatherModifiers
 
 _PROGRESSION_PHASES = (Phase.BUILD_UP, Phase.MIDFIELD, Phase.FINAL_THIRD)
@@ -52,10 +56,19 @@ class ChainResult:
     when the chain ended in a foul — the attacking team keeps the ball via
     the free kick rather than conceding a turnover."""
 
-    def __init__(self, events: list[MatchEvent], scored: bool, possession_retained: bool = False):
+    def __init__(
+        self,
+        events: list[MatchEvent],
+        scored: bool,
+        possession_retained: bool = False,
+        last_phase: Phase | None = None,
+        ball_carrier_id: str | None = None,
+    ):
         self.events = events
         self.scored = scored
         self.possession_retained = possession_retained
+        self.last_phase = last_phase
+        self.ball_carrier_id = ball_carrier_id
 
 
 class _RatingResult:
@@ -82,6 +95,8 @@ class PossessionChainEngine:
         self._card = CardCheck()
         self._injury = InjuryCheck()
         self._man_marking = ManMarking()
+        self._offside = OffsideCheck()
+        self._penalty = PenaltyEngine()
 
     def run(
         self,
@@ -90,19 +105,49 @@ class PossessionChainEngine:
         defending: Team,
         rng: random.Random,
         situation: MatchSituation,
+        *,
+        pitch_state: PitchState | None = None,
+        attacks_right: bool = True,
     ) -> ChainResult:
         events: list[MatchEvent] = []
+        last_phase: Phase | None = None
+        ball_carrier_id: str | None = None
 
         for phase in _PROGRESSION_PHASES:
-            succeeded, foul_occurred = self._contest(phase, minute, attacking, defending, rng, events, situation)
+            succeeded, foul_occurred, protagonist_id, penalty_taken = self._contest(
+                phase,
+                minute,
+                attacking,
+                defending,
+                rng,
+                events,
+                situation,
+                pitch_state=pitch_state,
+                attacks_right=attacks_right,
+            )
+            if penalty_taken:
+                scored = any(e.type == EventType.PENALTY_GOAL for e in events)
+                return ChainResult(
+                    events,
+                    scored=scored,
+                    possession_retained=True,
+                    last_phase=phase,
+                    ball_carrier_id=protagonist_id,
+                )
             if foul_occurred:
-                return ChainResult(events, scored=False, possession_retained=True)
+                return ChainResult(
+                    events, scored=False, possession_retained=True, last_phase=phase, ball_carrier_id=protagonist_id
+                )
             if not succeeded:
-                return ChainResult(events, scored=False)
+                return ChainResult(events, scored=False, last_phase=phase, ball_carrier_id=protagonist_id)
+            last_phase = phase
+            ball_carrier_id = protagonist_id
 
-        shot_events, scored = self._resolve_shot(minute, attacking, defending, rng, situation)
+        shot_events, scored, shooter_id = self._resolve_shot(minute, attacking, defending, rng, situation)
         events.extend(shot_events)
-        return ChainResult(events, scored=scored)
+        return ChainResult(
+            events, scored=scored, last_phase=Phase.SHOT, ball_carrier_id=shooter_id
+        )
 
     def _contest(
         self,
@@ -113,8 +158,11 @@ class PossessionChainEngine:
         rng: random.Random,
         events: list[MatchEvent],
         situation: MatchSituation,
-    ) -> tuple[bool, bool]:
-        """Returns (succeeded, foul_occurred)."""
+        *,
+        pitch_state: PitchState | None = None,
+        attacks_right: bool = True,
+    ) -> tuple[bool, bool, str, bool]:
+        """Returns (succeeded, foul_occurred, protagonist_id, penalty_taken)."""
         attacker_group = eligible_players(phase, attacking.starting_xi, "attack")
         defender_group = eligible_players(phase, defending.starting_xi, "defense")
 
@@ -145,19 +193,46 @@ class PossessionChainEngine:
             self._fatigue.deplete(player, defending.tactic.tempo, defending.tactic.pressing)
 
         if succeeded:
+            if (
+                phase == Phase.FINAL_THIRD
+                and pitch_state is not None
+                and defending.tactic.defensive_line == DefensiveLine.HIGH
+                and self._maybe_offside(
+                    minute,
+                    attacking,
+                    defending,
+                    protagonist_attacker.id,
+                    pitch_state,
+                    attacks_right,
+                    events,
+                )
+            ):
+                return False, False, protagonist_attacker.id, False
+
             events.append(
                 MatchEvent(
                     minute=minute, type=EventType.POSSESSION_PROGRESS, team_id=attacking.id,
                     player_ids=[protagonist_attacker.id], payload={"phase": phase.value},
                 )
             )
-            return True, False
+            return True, False, protagonist_attacker.id, False
 
-        foul_occurred = self._resolve_lost_duel(
-            phase, minute, attacking, defending, protagonist_attacker, protagonist_defender,
-            situation.referee_strictness, rng, events,
+        penalty_taken = self._resolve_lost_duel(
+            phase,
+            minute,
+            attacking,
+            defending,
+            protagonist_attacker,
+            protagonist_defender,
+            situation.referee_strictness,
+            rng,
+            events,
+            situation,
+            pitch_state=pitch_state,
+            attacks_right=attacks_right,
         )
-        return False, foul_occurred
+        foul_occurred = any(e.type == EventType.FOUL for e in events if e.minute == minute)
+        return False, foul_occurred, protagonist_attacker.id, penalty_taken
 
     def _resolve_lost_duel(
         self,
@@ -170,10 +245,14 @@ class PossessionChainEngine:
         referee_strictness: float,
         rng: random.Random,
         events: list[MatchEvent],
+        situation: MatchSituation,
+        *,
+        pitch_state: PitchState | None = None,
+        attacks_right: bool = True,
     ) -> bool:
         """The attacker just lost this phase to `tackler`. Decides whether
         it was a foul (§6) and handles the card/injury sub-rolls either
-        way. Returns whether it was a foul."""
+        way. Returns True when a penalty sequence was taken."""
         foul = self._foul.roll(phase, tackler, ball_carrier, rng)
 
         if not foul.is_foul:
@@ -188,10 +267,16 @@ class PossessionChainEngine:
                 self._injure(events, minute, defending, tackler)
             return False
 
+        ball_x = pitch_state.ball_x if pitch_state else 72.0
+        penalty_foul = phase == Phase.FINAL_THIRD and in_penalty_area(ball_x, attacks_right=attacks_right)
+
         events.append(
             MatchEvent(
-                minute=minute, type=EventType.FOUL, team_id=defending.id,
-                player_ids=[tackler.id, ball_carrier.id], payload={"phase": phase.value},
+                minute=minute,
+                type=EventType.FOUL,
+                team_id=defending.id,
+                player_ids=[tackler.id, ball_carrier.id],
+                payload={"phase": phase.value, "penalty": penalty_foul},
             )
         )
 
@@ -202,7 +287,46 @@ class PossessionChainEngine:
         if self._injury.roll(ball_carrier, rng, was_foul=True):
             self._injure(events, minute, attacking, ball_carrier)
 
-        return True
+        if penalty_foul:
+            penalty_events, _ = self._penalty.resolve(minute, attacking, defending, rng, situation)
+            events.extend(penalty_events)
+            return True
+
+        return False
+
+    def _maybe_offside(
+        self,
+        minute: int,
+        attacking: Team,
+        defending: Team,
+        receiver_id: str,
+        pitch_state: PitchState,
+        attacks_right: bool,
+        events: list[MatchEvent],
+    ) -> bool:
+        receiver = pitch_state.players.get(receiver_id, {"x": pitch_state.ball_x, "y": pitch_state.ball_y})
+        defender_positions = [
+            (pos["x"], pos["y"])
+            for pid, pos in pitch_state.players.items()
+            if any(p.id == pid for p in defending.starting_xi)
+        ]
+        if self._offside.is_offside(
+            receiver_x=receiver["x"],
+            ball_x=pitch_state.ball_x,
+            defender_positions=defender_positions,
+            attacks_right=attacks_right,
+        ):
+            events.append(
+                MatchEvent(
+                    minute=minute,
+                    type=EventType.OFFSIDE,
+                    team_id=attacking.id,
+                    player_ids=[receiver_id],
+                    payload={"receiver_x": receiver["x"]},
+                )
+            )
+            return True
+        return False
 
     def _apply_card(
         self, events: list[MatchEvent], minute: int, team: Team, player: Player, card: Card
@@ -234,7 +358,7 @@ class PossessionChainEngine:
         defending: Team,
         rng: random.Random,
         situation: MatchSituation,
-    ) -> tuple[list[MatchEvent], bool]:
+    ) -> tuple[list[MatchEvent], bool, str]:
         phase = Phase.SHOT
         shooter = self._selector.select(phase, attacking.starting_xi, "attack", rng)
         keeper = self._selector.select(phase, defending.starting_xi, "defense", rng)
@@ -258,7 +382,7 @@ class PossessionChainEngine:
             involved = [shooter.id, keeper.id] if outcome == EventType.SAVE else [shooter.id]
             events.append(MatchEvent(minute=minute, type=outcome, team_id=attacking.id, player_ids=involved))
 
-        return events, scored
+        return events, scored, shooter.id
 
     def _effective_ratings(
         self,

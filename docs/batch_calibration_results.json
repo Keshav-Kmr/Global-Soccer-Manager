@@ -1,0 +1,30 @@
+{
+  "matches": 100,
+  "goals_per_match": {
+    "mean": 3.17,
+    "stdev": 1.853
+  },
+  "home_goals_per_match": 1.73,
+  "away_goals_per_match": 1.44,
+  "home_win_rate": 0.51,
+  "draw_rate": 0.18,
+  "shots_per_match": {
+    "mean": 9.25,
+    "stdev": 4.066
+  },
+  "shots_on_target_per_match": {
+    "mean": 4.12,
+    "stdev": 2.09
+  },
+  "fouls_per_match": {
+    "mean": 10.42,
+    "stdev": 2.833
+  },
+  "cards_per_match": {
+    "mean": 4.54,
+    "stdev": 1.977
+  },
+  "home_possession_pct_mean": 50.912,
+  "pass_completion_pct_mean": 56.317,
+  "note": "Shots are phase-chain attempts, not full tracking stats \u2014 typical elite matches report more attempts; see README limitations."
+}

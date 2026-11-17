@@ -7,8 +7,9 @@
 **An open-source football season simulator and team management game.**
 
 Manage a club, build a squad, set your tactics, and live every match through
-a fast-paced, text-driven simulation — no pitch graphics, just score,
-cards, injuries, and the tension of every attack unfolding phase by phase.
+a fast-paced simulation — score, cards, injuries, and phase-by-phase drama.
+An optional **React match viewer** renders a top-down pitch from real engine
+coordinates (not a separate animation layer).
 
 ---
 
@@ -20,6 +21,7 @@ cards, injuries, and the tension of every attack unfolding phase by phase.
 - [Architecture](#architecture)
 - [Repository structure](#repository-structure)
 - [Getting started](#getting-started)
+- [Submission checklist (take-home)](#submission-checklist-take-home)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
 - [License](#license)
@@ -55,7 +57,7 @@ has to be right before anything else is worth building. Phases are meant to
 be built roughly in order; later phases will get more detail as earlier ones
 land.
 
-**🚧 Phases 0-3 essentially complete (design, match engine, live delivery, persistence). Next up: Phase 4 (frontend) — first backend-only milestone.**
+**Phases 0–4 (engine, API, persistence, match viewer) are in place for the interview take-home. Season/league layers remain future work.**
 
 <details>
 <summary><b>Phase 0 — Foundations (design)</b></summary>
@@ -269,26 +271,126 @@ backend/
     delivery/     - FastAPI TestClient tests (REST + WebSocket)
     persistence/  - repository round-trip tests (isolated in-memory SQLite)
     generation/   - generator determinism/distribution tests
-frontend/         - not started yet
+frontend/app/     - React + TypeScript + Vite match viewer
 ```
 
 ## Getting started
 
-```bash
+**Prerequisites:** Python **3.12+**, Node **16+** (18+ recommended for newest Vite).
+
+### Backend (Windows PowerShell)
+
+```powershell
 cd backend
-python -m venv .venv && source .venv/bin/activate
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
 
-pytest                             # all tests: engine, commentary, delivery, persistence
-python scripts/simulate_demo.py    # simulate one match, print its event feed
-python scripts/menu.py             # interactive scenario picker, incl. live
-                                    # mid-match tactic changes/substitutions
-python scripts/seed_database.py    # populate the DB with fictional teams
+# Tests (pytest is inside .venv — not on PATH until activated)
+.\.venv\Scripts\pytest.exe -q
 
-uvicorn app.main:app --reload      # run the API — POST /matches, then
-                                    # connect a WebSocket client to
-                                    # /matches/{id}/stream to watch it live
+# One match to stdout
+.\.venv\Scripts\python.exe scripts\simulate_demo.py
+
+# Batch calibration (100 seeded matches)
+.\.venv\Scripts\python.exe scripts\batch_simulate.py -n 100 -o ..\docs\batch_calibration_results.json
+
+# API server (use 127.0.0.1; pick another port if 8000 is blocked)
+.\.venv\Scripts\uvicorn.exe app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
+
+Open **http://127.0.0.1:8000/docs** for interactive REST docs.
+
+### Backend (macOS / Linux)
+
+```bash
+cd backend
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+pytest -q
+python scripts/simulate_demo.py
+python scripts/batch_simulate.py -n 100 -o ../docs/batch_calibration_results.json
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+### Frontend match viewer (Windows)
+
+Requires the **backend** running on port **8000** (Vite proxies `/api` to it).
+
+```powershell
+cd frontend\app
+npm install
+npm run dev
+```
+
+Open **http://127.0.0.1:5173** — click **New controlled match**, then use **+1 chain** / manager controls.
+
+If port 8000 fails with `WinError 10013`, stop any old server (`netstat -ano | findstr :8000`) or use:
+
+```powershell
+.\.venv\Scripts\uvicorn.exe app.main:app --host 127.0.0.1 --port 8010 --reload
+```
+
+Create `frontend/app/.env`:
+
+```env
+VITE_API_BASE=http://127.0.0.1:8010
+VITE_WS_BASE=ws://127.0.0.1:8010
+```
+
+Restart `npm run dev`.
+
+### Useful scripts
+
+| Command | Purpose |
+|--------|---------|
+| `python scripts/menu.py` | Interactive scenarios with commentary |
+| `python scripts/seed_database.py` | Seed SQLite with fictional teams |
+| `python scripts/live_client.py` | CLI WebSocket client for auto matches |
+
+## Submission checklist (take-home)
+
+Verified on this repo **2026-11-16** (Windows, project venv):
+
+| Check | How verified | Result |
+|-------|----------------|--------|
+| Backend tests | `.\.venv\Scripts\pytest.exe -q` | **113 passed**, 2 warnings, ~60s |
+| Headless batch (100 seeds) | `batch_simulate.py -n 100` | Goals/match mean **3.17** — see [`docs/batch_calibration_results.json`](docs/batch_calibration_results.json) |
+| Full match (script) | `simulate_demo.py` | Event log through **full_time** |
+| REST + controlled manager API | `tests/delivery/test_controlled_matches_api.py` + inline audit | advance, pause/resume, tactics, subs, statistics, result |
+| WebSocket stream | `tests/delivery/test_matches_api.py` | kickoff → events → full_time |
+| Deterministic replay | `tests/engine/test_batch_calibration.py` | same seed → same events; snapshot resume → same finish |
+| Frontend build | `cd frontend/app && npm run build && npm test` | build OK; **2** Vitest tests passed |
+
+**Not verified automatically in CI:** manual browser click-through of the React UI (build + API proxy are verified; you should confirm visuals locally).
+
+### Implemented (interview scope)
+
+- Deterministic possession-chain match engine (11v11, seeded RNG)
+- Match clock with half-time and stoppage time
+- Validated formations; tactical pitch coordinates on events
+- Live stats (goals, shots, possession chains, pass completion proxy, fouls, cards)
+- FastAPI: auto and **controlled** matches; WebSocket commentary stream
+- Manager endpoints: advance (steps, target minute, next key event, until full time), pause/resume, tactics, formation, substitutions, statistics
+- **REST snapshot** `GET/POST /matches/{id}/snapshot`, `POST /matches/{id}/restore` (wraps `match_snapshot.py`)
+- Structural **offside** and **penalty** mechanics (simplified; not full IFAB)
+- Enriched **match result** payload: statistics, player end states, evidence-based summary bullets
+- WebSocket events include monotonic **`index`** for reliable deduplication
+- React viewer: scoreboard (clock/stoppage/cards), pitch, commentary, team + player stats, full tactic/formation controls
+
+### Known limitations (honest)
+
+- **Not full IFAB 2026/27 compliance** — offside/penalties are structural approximations; no throw-ins, goal kicks as real restarts, extra time, etc.
+- **Phase-based simulation**, not continuous physics; pass counts remain a possession-chain proxy, not individual pass tracking
+- **No dedicated replay HTTP route** — determinism via same seed (+ snapshot restore); tactical action replay requires recorded manager actions
+- **No** xG model, heat maps, leagues, transfers, or auth
+- **Manager `advance` on auto matches** returns 400 (by design)
+- **Formation change** must match the current lineup shape (e.g. 4-3-3 slots)
+- **SQLite** match results persist; live in-progress sessions are in-memory only
+
+### Incomplete vs original take-home wish-list
+
+- Durable in-progress match DB (snapshots are REST + in-memory session today), dedicated replay route, substitution windows (3 windows + HT), 1000-match CI calibration, corners/interceptions as distinct events, full pitch animation, production Docker/CI
 
 Edit `scripts/simulate_demo.py`, or add a scenario to `scripts/menu.py`, to
 try your own team stats/tactics and see how a match plays out.
@@ -300,12 +402,15 @@ Design decisions and detailed technical specs live alongside the code as
 
 - [`docs/MATCH_ENGINE_NOTES.md`](docs/MATCH_ENGINE_NOTES.md) — plain-language
   walkthrough of how the match engine works today
+- [`docs/batch_calibration_results.json`](docs/batch_calibration_results.json) —
+  latest headless batch summary (goals, shots, possession, passes, cards)
 - [`CLAUDE.md`](CLAUDE.md) — project vision, structure, and conventions
 - [`backend/CLAUDE.md`](backend/CLAUDE.md) — backend stack and code conventions
 - [`backend/app/engine/CLAUDE.md`](backend/app/engine/CLAUDE.md) — the match simulation engine, in depth
 - [`backend/app/commentary/CLAUDE.md`](backend/app/commentary/CLAUDE.md) — narrative commentary generation
 - [`backend/app/delivery/CLAUDE.md`](backend/app/delivery/CLAUDE.md) — API and live match streaming
-- [`frontend/CLAUDE.md`](frontend/CLAUDE.md) — frontend status (pending)
+- [`frontend/CLAUDE.md`](frontend/CLAUDE.md) — match viewer (React/Vite)
+- [`frontend/app/README.md`](frontend/app/README.md) — run the UI locally
 
 ## Contributing
 

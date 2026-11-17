@@ -54,7 +54,7 @@ def test_stream_delivers_kickoff_then_full_time_with_commentary():
         # Every message is fully-formed wire shape, with commentary attached
         # — not a bare re-serialization of the internal MatchEvent.
         for message in messages:
-            assert set(message) == {"minute", "type", "team", "players", "payload", "commentary"}
+            assert set(message) == {"index", "minute", "type", "team", "players", "payload", "commentary"}
             assert isinstance(message["commentary"], str) and message["commentary"]
 
 

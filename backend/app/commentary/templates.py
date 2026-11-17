@@ -62,10 +62,38 @@ TEMPLATES: dict[EventType, list[str]] = {
         "A change of approach from {team}.",
         "{team} rethink their setup.",
     ],
+    EventType.FORMATION_CHANGE: [
+        "{team} switch formation.",
+        "A new shape for {team}.",
+    ],
     EventType.SUBSTITUTION: [
         "A substitution for {team}: {player_in} replaces {player_out}.",
         "{team} make a change — {player_in} on for {player_out}.",
         "Fresh legs for {team}: on comes {player_in}.",
+    ],
+    EventType.HALF_TIME: [
+        "Half time — the players head for the dressing room.",
+        "The whistle goes for half time.",
+    ],
+    EventType.OFFSIDE: [
+        "Offside — the flag is up against {player}.",
+        "The assistant's flag: {player} was offside.",
+    ],
+    EventType.PENALTY_AWARDED: [
+        "Penalty to {team}!",
+        "The referee points to the spot — {team} have a penalty.",
+    ],
+    EventType.PENALTY_GOAL: [
+        "GOAL from the spot! {player} converts for {team}.",
+        "It's in — {player} scores the penalty.",
+    ],
+    EventType.PENALTY_SAVE: [
+        "Saved! {keeper} denies the penalty.",
+        "Brilliant stop — {keeper} keeps {player}'s penalty out.",
+    ],
+    EventType.PENALTY_MISS: [
+        "{player} misses the penalty.",
+        "Off the mark — {player} fails to convert from the spot.",
     ],
     EventType.FULL_TIME: [
         "That's full time!",

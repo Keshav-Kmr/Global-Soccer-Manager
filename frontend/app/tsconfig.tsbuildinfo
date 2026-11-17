@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/types.ts","./src/vite-env.d.ts","./src/api/client.test.ts","./src/api/client.ts","./src/components/commentaryfeed.tsx","./src/components/managercontrols.tsx","./src/components/pitch.tsx","./src/components/scoreboard.tsx","./src/components/statisticspanel.tsx","./src/hooks/usematchsession.ts"],"version":"5.7.3"}

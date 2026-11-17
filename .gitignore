@@ -18,3 +18,14 @@ venv/
 
 # OS
 .DS_Store
+
+# Node / frontend build
+node_modules/
+dist/
+
+# Archives (local deliverables)
+*.zip
+
+# Env secrets
+.env
+.env.*

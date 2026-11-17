@@ -1,18 +1,24 @@
 # Frontend
 
-Not started. Stack (React / Vue / Svelte / other) is intentionally undecided
-until the backend match engine MVP is validated end-to-end (a match can be
-simulated and streamed over WebSocket, verified with a simple script or test
-client).
+**Stack:** React 18, TypeScript, Vite 4 — live match viewer in `frontend/app/`.
 
-## What it will eventually need to render
+## Run
 
-- Live score and match clock.
-- A key-event ticker (goals, cards, substitutions, injuries).
-- The phase-by-phase suspense text feed from `app/commentary` — this is the
-  primary experience, not a secondary log. No pitch/field graphic is
-  required; this is a text-and-tension presentation, not a visual match
-  simulator.
+```bash
+# Terminal 1 — backend
+cd backend && .venv\Scripts\uvicorn app.main:app --reload
 
-Revisit this file and make real stack decisions once the backend side above
-is working.
+# Terminal 2 — viewer
+cd frontend/app && npm install && npm run dev
+```
+
+Open http://localhost:5173. The dev server proxies `/api` (and WebSocket) to `http://127.0.0.1:8000`.
+
+## Features
+
+- SVG top-down pitch driven by engine `payload.pitch` (22 players + ball)
+- Scoreboard, clock, commentary feed, live statistics
+- Manager controls: controlled stepping, pause/resume, tactics, formation, substitutions
+- Optional auto mode (background sim + WebSocket), same UI
+
+Match data always comes from the API — no hardcoded scores or events.

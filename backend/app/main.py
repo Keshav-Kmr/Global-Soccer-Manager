@@ -20,6 +20,7 @@ hit more than once already).
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.delivery.api.matches import router as matches_router
 from app.delivery.api.teams import router as teams_router
@@ -44,6 +45,13 @@ def create_app(database_url: str = DEFAULT_DATABASE_URL, pacer: Pacer | None = N
         yield
 
     app = FastAPI(title="Global Soccer Manager", lifespan=lifespan)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     app.state.match_service = MatchService(
         InMemoryMatchRepository(),
         pacer=pacer,

@@ -30,12 +30,21 @@ def make_team_payload(team_id: str, name: str, overall: int = 60) -> dict:
     return {"id": team_id, "name": name, "starting_xi": starting_xi, "bench": []}
 
 
-def make_match_request(seed: int = 42) -> dict:
-    return {
+def make_match_request(seed: int = 42, *, controlled: bool = False) -> dict:
+    body = {
         "team_a": make_team_payload("home", "FC Home"),
         "team_b": make_team_payload("away", "FC Away"),
         "seed": seed,
     }
+    if controlled:
+        body["mode"] = "controlled"
+    return body
+
+
+def make_controlled_match_request(seed: int = 42) -> dict:
+    home = make_team_payload("home", "FC Home")
+    home["bench"] = [make_player_payload("home_sub0", "Home Sub ST", "ST", 70)]
+    return make_match_request(seed=seed, controlled=True) | {"team_a": home}
 
 
 def build_test_app() -> FastAPI:

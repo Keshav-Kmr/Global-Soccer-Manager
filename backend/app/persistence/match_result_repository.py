@@ -20,6 +20,9 @@ class MatchResult:
     score_b: int
     seed: int
     events: list[dict]
+    statistics: dict | None = None
+    summary: list[str] | None = None
+    player_states: list[dict] | None = None
 
 
 class MatchResultRepository(ABC):

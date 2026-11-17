@@ -32,5 +32,9 @@ class MatchRepository(ABC):
         ...
 
     @abstractmethod
+    def replace_events(self, match_id: str, events: list[dict]) -> None:
+        ...
+
+    @abstractmethod
     def exists(self, match_id: str) -> bool:
         ...

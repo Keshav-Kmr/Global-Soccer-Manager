@@ -25,8 +25,38 @@ class EventType(str, Enum):
     BLOCK = "block"
     OFF_TARGET = "off_target"
     TACTIC_CHANGE = "tactic_change"
+    FORMATION_CHANGE = "formation_change"
     SUBSTITUTION = "substitution"
+    HALF_TIME = "half_time"
     FULL_TIME = "full_time"
+    OFFSIDE = "offside"
+    PENALTY_AWARDED = "penalty_awarded"
+    PENALTY_GOAL = "penalty_goal"
+    PENALTY_SAVE = "penalty_save"
+    PENALTY_MISS = "penalty_miss"
+
+
+KEY_EVENT_TYPES = frozenset({
+    EventType.GOAL,
+    EventType.PENALTY_AWARDED,
+    EventType.PENALTY_GOAL,
+    EventType.CARD,
+    EventType.INJURY,
+    EventType.SUBSTITUTION,
+    EventType.HALF_TIME,
+})
+
+
+_STOPPAGE_EVENT_TYPES = frozenset({
+    EventType.GOAL,
+    EventType.PENALTY_GOAL,
+    EventType.FOUL,
+    EventType.CARD,
+    EventType.INJURY,
+    EventType.SUBSTITUTION,
+    EventType.TACTIC_CHANGE,
+    EventType.PENALTY_AWARDED,
+})
 
 
 @dataclass

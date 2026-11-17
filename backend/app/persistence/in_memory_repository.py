@@ -20,6 +20,9 @@ class InMemoryMatchRepository(MatchRepository):
     def get_events(self, match_id: str, since_index: int = 0) -> list[dict]:
         return self._sessions[match_id]["events"][since_index:]
 
+    def replace_events(self, match_id: str, events: list[dict]) -> None:
+        self._sessions[match_id]["events"] = events
+
     def mark_finished(self, match_id: str) -> None:
         self._sessions[match_id]["finished"] = True
 

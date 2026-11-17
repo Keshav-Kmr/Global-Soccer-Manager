@@ -53,10 +53,25 @@ _SAMPLE_EVENTS = {
     EventType.BLOCK: MatchEvent(minute=24, type=EventType.BLOCK, team_id="home", player_ids=["pacey"]),
     EventType.OFF_TARGET: MatchEvent(minute=26, type=EventType.OFF_TARGET, team_id="home", player_ids=["pacey"]),
     EventType.TACTIC_CHANGE: MatchEvent(minute=45, type=EventType.TACTIC_CHANGE, team_id="home"),
+    EventType.FORMATION_CHANGE: MatchEvent(minute=46, type=EventType.FORMATION_CHANGE, team_id="home"),
     EventType.SUBSTITUTION: MatchEvent(
         minute=60, type=EventType.SUBSTITUTION, team_id="home", player_ids=["average", "pacey"]
     ),
-    EventType.FULL_TIME: MatchEvent(minute=90, type=EventType.FULL_TIME, team_id=None),
+    EventType.HALF_TIME: MatchEvent(minute=47, type=EventType.HALF_TIME, team_id=None),
+    EventType.FULL_TIME: MatchEvent(minute=92, type=EventType.FULL_TIME, team_id=None),
+    EventType.OFFSIDE: MatchEvent(minute=28, type=EventType.OFFSIDE, team_id="home", player_ids=["pacey"]),
+    EventType.PENALTY_AWARDED: MatchEvent(
+        minute=55, type=EventType.PENALTY_AWARDED, team_id="home", player_ids=["power_shooter"]
+    ),
+    EventType.PENALTY_GOAL: MatchEvent(
+        minute=55, type=EventType.PENALTY_GOAL, team_id="home", player_ids=["power_shooter"]
+    ),
+    EventType.PENALTY_SAVE: MatchEvent(
+        minute=70, type=EventType.PENALTY_SAVE, team_id="away", player_ids=["power_shooter", "keeper"]
+    ),
+    EventType.PENALTY_MISS: MatchEvent(
+        minute=80, type=EventType.PENALTY_MISS, team_id="home", player_ids=["power_shooter"]
+    ),
 }
 
 

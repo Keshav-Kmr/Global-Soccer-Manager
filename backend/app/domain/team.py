@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 
+from app.domain.formation import Formation, validate_starting_xi
 from app.domain.player import Player
 from app.domain.tactic import Tactic
 
@@ -13,14 +14,14 @@ class Team:
     starting_xi: list[Player]
     tactic: Tactic = field(default_factory=Tactic)
     bench: list[Player] = field(default_factory=list)
+    formation: Formation = Formation.FOUR_THREE_THREE
     # Match-day counter for automatic substitutions (engine/auto_substitution.py,
     # engine/CLAUDE.md §8) — reset to 0 at the start of every Match, alongside
     # the Player match-day fields (fitness, yellow_cards, available).
     substitutions_used: int = 0
 
     def __post_init__(self) -> None:
-        if len(self.starting_xi) != 11:
-            raise ValueError(f"starting_xi must have exactly 11 players, got {len(self.starting_xi)}")
+        validate_starting_xi(self.starting_xi, self.formation)
 
         # Deliberately NOT snapshotted here: a caller commonly customizes
         # starting_xi/bench after construction (e.g. swapping in a hand-

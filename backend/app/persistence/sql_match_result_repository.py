@@ -26,7 +26,14 @@ class SqlMatchResultRepository(MatchResultRepository):
             score_a=result.score_a,
             score_b=result.score_b,
             seed=result.seed,
-            events_json=json.dumps(result.events),
+            events_json=json.dumps(
+                {
+                    "events": result.events,
+                    "statistics": result.statistics,
+                    "summary": result.summary,
+                    "player_states": result.player_states,
+                }
+            ),
         )
         async with self._session_factory() as session:
             await session.merge(model)
@@ -37,6 +44,19 @@ class SqlMatchResultRepository(MatchResultRepository):
             model = await session.get(MatchResultModel, match_id)
             if model is None:
                 return None
+            raw = json.loads(model.events_json)
+            if isinstance(raw, list):
+                return MatchResult(
+                    match_id=model.id,
+                    team_a_id=model.team_a_id,
+                    team_a_name=model.team_a_name,
+                    team_b_id=model.team_b_id,
+                    team_b_name=model.team_b_name,
+                    score_a=model.score_a,
+                    score_b=model.score_b,
+                    seed=model.seed,
+                    events=raw,
+                )
             return MatchResult(
                 match_id=model.id,
                 team_a_id=model.team_a_id,
@@ -46,5 +66,8 @@ class SqlMatchResultRepository(MatchResultRepository):
                 score_a=model.score_a,
                 score_b=model.score_b,
                 seed=model.seed,
-                events=json.loads(model.events_json),
+                events=raw.get("events", []),
+                statistics=raw.get("statistics"),
+                summary=raw.get("summary"),
+                player_states=raw.get("player_states"),
             )

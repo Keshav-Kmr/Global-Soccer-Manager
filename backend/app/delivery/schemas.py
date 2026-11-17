@@ -13,8 +13,10 @@ from here.
 
 from pydantic import BaseModel, Field
 
+from app.domain.formation import Formation
 from app.domain.match_context import MatchContext, Weather
 from app.domain.player import Player, PlayerAttributes, Position
+from enum import Enum
 from app.domain.tactic import DefensiveLine, MarkingScheme, Mentality, Pressing, Tactic, Tempo, Width
 from app.domain.team import Team
 
@@ -60,6 +62,12 @@ class TeamSchema(BaseModel):
     starting_xi: list[PlayerSchema] = Field(min_length=11, max_length=11)
     bench: list[PlayerSchema] = []
     tactic: TacticSchema = TacticSchema()
+    formation: Formation = Formation.FOUR_THREE_THREE
+
+
+class MatchRunModeSchema(str, Enum):
+    AUTO = "auto"
+    CONTROLLED = "controlled"
 
 
 class CreateMatchRequest(BaseModel):
@@ -67,10 +75,58 @@ class CreateMatchRequest(BaseModel):
     team_b: TeamSchema
     seed: int | None = None
     weather: Weather = Weather.CLEAR
+    mode: MatchRunModeSchema = MatchRunModeSchema.AUTO
 
 
 class CreateMatchResponse(BaseModel):
     match_id: str
+
+
+class MatchStateSchema(BaseModel):
+    match_id: str
+    mode: str
+    minute: int
+    paused: bool
+    finished: bool
+    score: dict[str, int]
+    team_a_id: str
+    team_b_id: str
+    seed: int
+    clock: dict | None = None
+
+
+class AdvanceMatchRequest(BaseModel):
+    steps: int = Field(default=1, ge=1, le=500)
+    target_minute: int | None = Field(default=None, ge=0, le=120)
+    next_key_event: bool = False
+    until_finished: bool = False
+
+
+class AdvanceMatchResponse(BaseModel):
+    advanced_chains: int
+    finished: bool
+    minute: int
+
+
+class ChangeTacticRequest(BaseModel):
+    team_id: str
+    tactic: TacticSchema
+
+
+class ChangeFormationRequest(BaseModel):
+    team_id: str
+    formation: Formation
+
+
+class SubstitutionRequest(BaseModel):
+    team_id: str
+    player_out_id: str
+    player_in_id: str
+
+
+class MatchStatisticsSchema(BaseModel):
+    teams: dict
+    players: dict
 
 
 class MatchEventMessage(BaseModel):
@@ -78,12 +134,21 @@ class MatchEventMessage(BaseModel):
     uses `team`/`players`, not the engine's `team_id`/`player_ids`: this
     is the public contract, free to diverge from internal naming."""
 
+    index: int
     minute: int
     type: str
     team: str | None
     players: list[str]
     payload: dict
     commentary: str
+
+
+class SnapshotResponse(BaseModel):
+    snapshot: dict
+
+
+class RestoreSnapshotRequest(BaseModel):
+    snapshot: dict
 
 
 class MatchResultSchema(BaseModel):
@@ -98,6 +163,9 @@ class MatchResultSchema(BaseModel):
     score_b: int
     seed: int
     events: list[dict]
+    statistics: dict | None = None
+    summary: list[str] | None = None
+    player_states: list[dict] | None = None
 
 
 def _player_from_schema(schema: PlayerSchema) -> Player:
@@ -127,6 +195,7 @@ def team_from_schema(schema: TeamSchema) -> Team:
         starting_xi=[_player_from_schema(p) for p in schema.starting_xi],
         bench=[_player_from_schema(p) for p in schema.bench],
         tactic=_tactic_from_schema(schema.tactic),
+        formation=schema.formation,
     )
 
 
