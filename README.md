@@ -13,13 +13,9 @@ Repository: [github.com/Keshav-Kmr/Global-Soccer-Manager](https://github.com/Kes
 
 ## Screenshots
 
-**Live match viewer** — squad hub, pitch coordinates, manager controls, team stats, and team-colored commentary feed:
-
-![Live match viewer — pitch, manager controls, statistics, and commentary](docs/images/match-viewer.png)
-
-| Controlled match flow | Team-colored match events |
-|---|---|
-| ![Advancing a controlled match in the React viewer](docs/images/match-demo.gif) | ![Match events with home/away color coding](docs/images/match-events.png) |
+| Squads & scoreboard | Pitch & team stats | Manager controls & events |
+|---|---|---|
+| ![Squads hub, tactic editor, and live scoreboard](docs/images/screenshot-squads-scoreboard.png) | ![Top-down pitch with live team statistics](docs/images/screenshot-pitch-stats.png) | ![Manager panel and team-colored commentary feed](docs/images/screenshot-manager-events.png) |
 
 ---
 
